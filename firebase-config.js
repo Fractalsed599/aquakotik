@@ -1,23 +1,12 @@
 // ============================================================================
-// AquaKotik Web — Firebase configuration  (ЗАПОЛНИ ЭТО)
-// ----------------------------------------------------------------------------
-// 1) Открой https://console.firebase.google.com  (нужен бесплатный аккаунт Google)
-// 2) "Добавить проект" -> придумай имя (например, aquakotik).
-// 3) На странице проекта: значок шестерёнки -> "Настройки проекта" -> "Ваши
-//    приложения" -> иконка </> (веб) -> зарегистрируй приложение.
-// 4) Firebase покажет объект `firebaseConfig` — скопируй его значения ниже.
-// 5) ССЫЛКА НА БД: в проекте выбери "Realtime Database" -> "Создать базу данных"
-//    (регион) -> вкладка "Правила" -> вставь правило из README (разрешить доступ)
-//    -> "Опубликовать".
-//
-// Пока apiKey пустой "" — веб-режим ВЫКЛЮЧЁН (приложение работает как обычно,
-// когда его отдаёт локальный Node-сервер). Вставь apiKey — и включится github.io.
+// AquaKotik Web — Firebase configuration  (ЗАПОЛНЕНО)
+// Проект: aquakotik-messenger-21057  |  регион: europe-west1
 // ============================================================================
 window.AQUAKOTIK_FIREBASE = {
-  apiKey: "",                                              // <- ОБЯЗАТЕЛЬНО (из шага 4)
-  authDomain: "твой-проект.firebaseapp.com",
-  databaseURL: "https://твой-проект-default-rtdb.firebaseio.com", // <- ОБЯЗАТЕЛЬНО
-  projectId: "твой-проект",
+  apiKey: "AIzaSyBe6Jafw5UT0iaJRZSyPD8nq9XldR9mJ7s",
+  authDomain: "aquakotik-messenger-21057.firebaseapp.com",
+  databaseURL: "https://aquakotik-messenger-21057-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "aquakotik-messenger-21057",
 
   // опционально:
   rootPath: "aquakotik",          // верхний узел в Realtime Database
