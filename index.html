@@ -5564,10 +5564,10 @@ const AK43_QR=(()=>{
     const m=Array.from({length:size},()=>new Array(size).fill(0));
     const fn=Array.from({length:size},()=>new Array(size).fill(false));
     const set=(r,c,v)=>{m[r][c]=v?1:0;fn[r][c]=true;};
-    const finder=(r,c)=>{for(let dr=-1;dr<=7;dr++)for(let dc=-1;dc<=7;dc++){const rr=r+dr,cc=c+dc;if(rr<0||cc<0||rr>=size||cc>=size)continue;const ring=dr===0||dr===6||dc===0||dc===6;const core=dr>=2&&dr<=4&&dc>=2&&dc<=4;set(rr,cc,ring||core);}};
+    const finder=(r,c)=>{for(let dr=0;dr<=6;dr++)for(let dc=0;dc<=6;dc++){const rr=r+dr,cc=c+dc;if(rr<0||cc<0||rr>=size||cc>=size)continue;const ring=dr===0||dr===6||dc===0||dc===6;const core=dr>=2&&dr<=4&&dc>=2&&dc<=4;set(rr,cc,ring||core);}for(let i=-1;i<=7;i++){[[r+7,c+i],[r+i,c+7],[r-1,c+i],[r+i,c-1]].forEach(p=>{if(p[0]>=0&&p[0]<size&&p[1]>=0&&p[1]<size)set(p[0],p[1],false);});}};
     finder(0,0);finder(0,size-7);finder(size-7,0);
     for(let i=8;i<size-8;i++){if(!fn[6][i])set(6,i,i%2===0);if(!fn[i][6])set(i,6,i%2===0);}
-    const pos=spec.v===2?[6,18]:[6,22];
+    const pos=spec.v===1?[]:(spec.v===2?[6,18]:[6,22]);
     for(const ar of pos)for(const ac of pos){
       if(fn[ar][ac])continue;
       for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++)set(ar+dr,ac+dc,Math.max(Math.abs(dr),Math.abs(dc))!==1);
@@ -5605,8 +5605,8 @@ const AK43_QR=(()=>{
   return {encode};
 })();
 function ak43QrSvg(text){
-  const m=AK43_QR.encode(text);
-  if(!m)return `<div class="ak43-qr-empty">QR</div>`;
+  let m=null;try{m=AK43_QR.encode(text);}catch(e){m=null;}
+  if(!m||!m.length)return `<div class="ak43-qr-empty">QR</div>`;
   const n=m.length;
   let rects='';
   for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(m[r][c])rects+=`<rect x="${c}" y="${r}" width="1" height="1"/>`;
@@ -7292,6 +7292,218 @@ ak43ApplyCosmetics();
   },true);
 })();
 
+
+/* ============================================================================
+   ak47 — feature pack: verified/admin/premium badges, link previews
+   (YouTube inline video + generic cards), and the "send letter" flow.
+   Follows the akNN monkey-patch pattern.
+   ========================================================================== */
+(function(){
+'use strict';
+if(typeof akLiveCode!=='function')return;
+const tt47=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+
+/* ---------- CSS ---------- */
+(function injectCss(){
+  if(document.getElementById('ak47-style'))return;
+  const st=document.createElement('style');st.id='ak47-style';
+  st.textContent=`
+.ak47-badge{display:inline-grid;place-items:center;width:18px;height:18px;margin-left:4px;vertical-align:-3px;border-radius:50%;flex:none;}
+.ak47-badge svg{width:18px;height:18px;display:block;}
+.ak47-badge-verified{color:#2f6bff;background:rgba(47,107,255,.13);}
+.ak47-badge-verified .verified-fill{fill:#2f6bff;stroke:none;}
+.ak47-badge-verified .verified-check{fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
+.ak47-badge-admin{color:#0aa06e;background:rgba(10,160,110,.15);}
+.ak47-badge-premium{color:#b57400;background:rgba(255,190,40,.2);}
+.entity-name-row,.chat-title strong{display:inline-flex;align-items:center;flex-wrap:wrap;}
+.ak47-link{margin-top:8px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);max-width:340px;}
+.ak47-yt{cursor:pointer;position:relative;}
+.ak47-yt-thumb{position:relative;background:#000;}
+.ak47-yt-thumb img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover;}
+.ak47-yt-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.62);color:#fff;border:none;font-size:18px;display:grid;place-items:center;cursor:pointer;}
+.ak47-yt iframe{width:100%;aspect-ratio:16/9;border:0;display:block;}
+.ak47-yt-cap{padding:6px 10px;font-size:11px;color:var(--ink-soft);}
+.ak47-card a{display:flex;align-items:center;gap:8px;padding:9px 10px;text-decoration:none;color:var(--ink);font-size:12px;}
+.ak47-card-fav{width:18px;height:18px;border-radius:4px;flex:none;}
+.ak47-card-host{font-weight:700;}
+.ak47-card-url{color:var(--ink-soft);font-size:11px;word-break:break-all;display:block;padding:0 10px 9px;}
+.ak47-link.ak47-err .ak47-yt-thumb img{display:none;}
+.ak47-link.ak47-err .ak47-yt-thumb{min-height:96px;}
+.ak47-letter{margin-top:4px;border:1px solid rgba(201,148,30,.45);border-left:4px solid #c9941e;border-radius:14px;background:linear-gradient(180deg,rgba(255,244,214,.7),var(--surface));padding:12px 14px;max-width:420px;}
+.ak47-letter-head{display:flex;align-items:center;gap:8px;font-weight:800;color:#8a6410;margin-bottom:6px;font-size:13px;}
+.ak47-letter-body{white-space:pre-wrap;font-size:13px;color:var(--ink);}
+.ak47-letter-img{margin-top:8px;border-radius:10px;max-width:100%;max-height:260px;display:block;}
+.ak47-letter-sub{margin-top:6px;font-size:11px;color:var(--ink-soft);font-style:italic;}
+.ak47-env{width:120px;height:84px;position:relative;margin:6px auto 14px;filter:drop-shadow(0 10px 22px rgba(201,148,30,.35));}
+.ak47-env-body{position:absolute;inset:0;background:linear-gradient(160deg,#e8c06a,#c9941e);border-radius:8px;}
+.ak47-env-flap{position:absolute;left:0;right:0;top:0;height:52%;background:linear-gradient(180deg,#f2d489,#d8a52e);border-radius:8px 8px 0 0;transform-origin:top;animation:ak47-open 2.6s ease-in-out infinite;}
+.ak47-env-seal{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;background:#a8324f;color:#fff;display:grid;place-items:center;font-size:15px;z-index:2;}
+@keyframes ak47-open{0%,20%{transform:rotateX(0)}55%,80%{transform:rotateX(178deg)}100%{transform:rotateX(0)}}
+.ak47-steps{display:flex;gap:6px;justify-content:center;margin:14px 0 4px;}
+.ak47-step-dot{width:9px;height:9px;border-radius:50%;background:var(--line);transition:.3s;}
+.ak47-step-dot.on{background:#c9941e;width:22px;border-radius:5px;}
+.ak47-step-title{text-align:center;font-weight:800;font-size:16px;margin:10px 0 4px;}
+.ak47-step-text{text-align:center;color:var(--ink-soft);font-size:13px;min-height:38px;padding:0 8px;}
+.ak47-letter-form .field{margin-bottom:12px;}
+.ak47-letter-photo{border:1px dashed var(--line);border-radius:12px;padding:10px;display:flex;align-items:center;gap:10px;cursor:pointer;background:var(--surface);}
+.ak47-letter-photo img{max-height:60px;border-radius:8px;}
+.ak47-modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;}
+  `;
+  document.head.appendChild(st);
+})();
+
+/* ---------- user / badge helpers ---------- */
+function myCode(){try{return akLiveCode();}catch(e){return (state.account&&state.account.aquaCode)||'';}}
+function userRec(code){
+  if(!code)return null;
+  if(code===myCode()){
+    return Object.assign({},state.account||{},{code,verified:!!(state.verified&&state.verified.purchased&&state.verified.enabled),premium:!!state.premium});
+  }
+  return (state.liveUsers||{})[code]||null;
+}
+const AK47_ADMIN=(function(){try{return (window.AQUAKOTIK_FIREBASE&&window.AQUAKOTIK_FIREBASE.adminEmail||'irontim88@gmail.com').toLowerCase();}catch(e){return 'irontim88@gmail.com';}})();
+function isAdminCode(code){const r=userRec(code);return !!(r&&r.email&&String(r.email).toLowerCase()===AK47_ADMIN);}
+function verifiedSvg(){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="verified-fill" d="M12 1.6l2.6 2 3.3-.3 1 3.2 2.9 1.8-1.1 3.1 1.1 3.1-2.9 1.8-1 3.2-3.3-.3-2.6 2-2.6-2-3.3.3-1-3.2-2.9-1.8 1.1-3.1L2.2 8.4l2.9-1.8 1-3.2 3.3.3z"/><path class="verified-check" d="M8.2 12.3l2.6 2.6 4.9-5.4"/></svg>';}
+function shieldSvg(){return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2l7 3v6c0 4.4-3 8.4-7 9.6C8 19.4 5 15.4 5 11V5l7-3zm-1.2 12.4l5.3-5.3-1.4-1.4-3.9 3.9-1.8-1.8-1.4 1.4 3.2 3.2z"/></svg>';}
+function crownSvg(){return '<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M3 7.5l4.2 3.8L12 5l4.8 6.3L21 7.5V17H3z"/></svg>';}
+window.ak47BadgeForCode=function(code){
+  if(!code)return '';
+  const r=userRec(code);const parts=[];
+  if(isAdminCode(code))parts.push('<span class="ak47-badge ak47-badge-admin" title="'+escapeHtml(tt47('Администратор','Administrator'))+'">'+shieldSvg()+'</span>');
+  if(r&&r.verified)parts.push('<span class="ak47-badge ak47-badge-verified" title="'+escapeHtml(tt47('Подтверждённый','Verified'))+'">'+verifiedSvg()+'</span>');
+  if(r&&r.premium)parts.push('<span class="ak47-badge ak47-badge-premium" title="'+escapeHtml(tt47('Премиум','Premium'))+'">'+crownSvg()+'</span>');
+  return parts.join('');
+};
+
+/* ---------- link previews ---------- */
+function ytId(url){const m=String(url).match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/i);return m?m[1]:null;}
+function escapeAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function linkPreview(text){
+  const m=String(text||'').match(/https?:\/\/[^\s<>"')\]]+/i);if(!m)return '';
+  const url=m[0];const id=ytId(url);
+  if(id){
+    return '<div class="ak47-link ak47-yt" data-ak47-yt="'+id+'" data-ak47-url="'+escapeAttr(url)+'"><div class="ak47-yt-thumb"><img src="https://img.youtube.com/vi/'+id+'/hqdefault.jpg" alt="YouTube" loading="lazy" onerror="this.closest(\'.ak47-link\').classList.add(\'ak47-err\')"><button class="ak47-yt-play" type="button" aria-label="Play">&#9654;</button></div><div class="ak47-yt-cap">'+escapeHtml('YouTube')+' · '+escapeHtml(id)+'</div></div>';
+  }
+  let host='';try{host=new URL(url).hostname.replace(/^www\./,'');}catch(e){host=url;}
+  const fav='https://www.google.com/s2/favicons?domain='+encodeURIComponent(host)+'&sz=64';
+  return '<div class="ak47-link ak47-card"><a href="'+escapeAttr(url)+'" target="_blank" rel="noopener"><img class="ak47-card-fav" src="'+fav+'" alt="" onerror="this.style.display=\'none\'"><span class="ak47-card-host">'+escapeHtml(host)+'</span></a><a class="ak47-card-url" href="'+escapeAttr(url)+'" target="_blank" rel="noopener">'+escapeHtml(url.length>48?url.slice(0,48)+'…':url)+'</a></div>';
+}
+window.ak47PlayYt=function(el){
+  const id=el.dataset.ak47yt;if(!id||el.querySelector('iframe'))return;
+  el.innerHTML='<iframe src="https://www.youtube.com/embed/'+id+'?autoplay=1&rel=0" title="YouTube" allow="accelerometer;autoplay;encrypted-media;gyroscope;picture-in-picture" allowfullscreen></iframe>';
+};
+
+/* ---------- renderMessage: link preview + letter card ---------- */
+const baseRenderMessage=renderMessage;
+renderMessage=function(message){
+  let html=baseRenderMessage(message);
+  if(message&&message.kind==='letter'){
+    const head=icon('edit')+'<span>'+escapeHtml(tt47('Письмо','Letter'))+'</span>';
+    html='<div class="message-row '+(message.sender==='me'?'mine':'theirs')+'"><div class="message-bubble"><div class="ak47-letter"><div class="ak47-letter-head">'+head+'</div>'+(message.text?'<div class="ak47-letter-body">'+escapeHtml(message.text)+'</div>':'')+(message.image?'<img class="ak47-letter-img" src="'+escapeHtml(message.image)+'" alt="">':'')+(message.subject?'<div class="ak47-letter-sub">'+escapeHtml(message.subject)+'</div>':'')+'</div><div class="message-meta"><span>'+formatTime(message.createdAt)+'</span></div></div></div>';
+    return html;
+  }
+  if(message&&message.text){
+    const prev=linkPreview(message.text);
+    if(prev&&/<div class="message-meta">/.test(html))html=html.replace(/<div class="message-meta">/,prev+'<div class="message-meta">');
+  }
+  return html;
+};
+
+/* ---------- renderChatMenu: add "send letter" ---------- */
+const baseRenderChatMenu=renderChatMenu;
+renderChatMenu=function(entity){
+  let html=baseRenderChatMenu(entity);
+  const item='<button class="menu-item" type="button" data-chat-action="letter">'+icon('edit')+'<span>'+escapeHtml(tt47('Отправить письмо','Send letter'))+'</span></button>';
+  html=html.replace(/<\/div>\s*$/,item+'</div>');
+  return html;
+};
+
+/* ---------- letter flow (step-by-step, skippable) ---------- */
+const LETTER_STEPS=[
+  {t:'Приветствие',d:'Начните письмо с тёплого приветствия — это задаёт тон.'},
+  {t:'Содержание',d:'Опишите главное: по какому поводу письмо и что вы хотите передать.'},
+  {t:'Фото',d:'Добавьте красивое фото, если хотите сделать письмо ярче (не обязательно).'},
+  {t:'Отправка',d:'Нажмите «Отправить» — письмо улетит адресату в конверте.'}
+];
+let ak47LetterPhoto='';
+window.ak47SendLetter=function(){
+  if(!ui.selectedId)return;const entity=getEntity(ui.selectedId);if(!entity||!entity.contactCode||entity.bot){showToast(tt47('Письма можно отправить только контакту','Letters can be sent to a contact'),'','block');return;}
+  let step=0;ak47LetterPhoto='';
+  const formBody=`<div class="ak47-letter-form"><div class="field"><label>${escapeHtml(tt47('Тема (необязательно)','Subject (optional)'))}</label><input id="ak47-letter-sub" maxlength="80" placeholder="${escapeHtml(tt47('Например: С днём рождения!','For example: Happy birthday!'))}"></div><div class="field"><label>${escapeHtml(tt47('Текст письма','Letter text'))}</label><textarea id="ak47-letter-text" rows="5" maxlength="2000" placeholder="${escapeHtml(tt47('Напишите тёплые слова…','Write kind words…'))}"></textarea></div><label class="ak47-letter-photo" id="ak47-letter-photo-btn"><span>${icon('image')} ${escapeHtml(tt47('Добавить фото','Add a photo'))}</span><input id="ak47-letter-photo" type="file" accept="image/*" hidden></label></div>`;
+  const stepBody=`<div style="text-align:center"><div class="ak47-env"><div class="ak47-env-body"></div><div class="ak47-env-seal">&#9829;</div><div class="ak47-env-flap"></div></div><div class="ak47-steps">${LETTER_STEPS.map((_,i)=>'<span class="ak47-step-dot" data-dot="'+i+'"></span>').join('')}</div><div class="ak47-step-title" id="ak47-step-title"></div><div class="ak47-step-text" id="ak47-step-text"></div><div class="ak47-modal-actions"><button class="secondary-btn" type="button" id="ak47-letter-skip">${escapeHtml(tt47('Пропустить','Skip'))}</button><button class="primary-btn" type="button" id="ak47-letter-next">${escapeHtml(tt47('Далее','Next'))}</button></div></div>`;
+  let root=null;
+  function paintStep(){
+    document.querySelectorAll('.ak47-step-dot').forEach((d,i)=>d.classList.toggle('on',i===step));
+    document.getElementById('ak47-step-title').textContent=LETTER_STEPS[step].t;
+    document.getElementById('ak47-step-text').textContent=LETTER_STEPS[step].d;
+    document.getElementById('ak47-letter-next').textContent=(step===LETTER_STEPS.length-1)?tt47('К письму','To the letter'):tt47('Далее','Next');
+  }
+  function showForm(){
+    root.innerHTML=formBody;
+    const file=root.querySelector('#ak47-letter-photo');
+    file.addEventListener('change',()=>{
+      const f=file.files&&file.files[0];if(!f)return;
+      const rd=new FileReader();rd.onload=()=>{ak47LetterPhoto=String(rd.result);const b=root.querySelector('#ak47-letter-photo-btn');b.innerHTML='<img src="'+ak47LetterPhoto+'" alt=""> <span>'+escapeHtml(tt47('Заменить фото','Replace photo'))+'</span>';};
+      rd.readAsDataURL(f);
+    });
+    root.querySelector('.ak47-modal-actions,.ak47-modal-actions')?.remove();
+    root.insertAdjacentHTML('beforeend','<div class="ak47-modal-actions"><button class="secondary-btn" type="button" id="ak47-letter-back">'+escapeHtml(tt47('Назад','Back'))+'</button><button class="primary-btn" type="button" id="ak47-letter-send">'+icon('send')+' '+escapeHtml(tt47('Отправить письмо','Send letter'))+'</button></div>');
+    root.querySelector('#ak47-letter-back').addEventListener('click',()=>{step=0;root.innerHTML=stepBody;wireSteps();paintStep();});
+    root.querySelector('#ak47-letter-send').addEventListener('click',sendLetter);
+  }
+  function wireSteps(){
+    root.querySelector('#ak47-letter-skip').addEventListener('click',showForm);
+    root.querySelector('#ak47-letter-next').addEventListener('click',()=>{step<LETTER_STEPS.length-1?(step++,paintStep()):showForm();});
+  }
+  function sendLetter(){
+    const text=(root.querySelector('#ak47-letter-text')?.value||'').trim();
+    const subject=(root.querySelector('#ak47-letter-sub')?.value||'').trim();
+    if(!text){showToast(tt47('Напишите текст письма','Write the letter text'),'','block');return;}
+    closeModal();
+    addMessage(entity.id,{sender:'me',kind:'letter',text,subject,image:ak47LetterPhoto||null,createdAt:nowIso()});
+    akLive.post('/api/message',{entityId:entity.id,fromCode:myCode(),toCode:entity.contactCode,text:'[letter]'+text,kind:'letter'}).catch(()=>{});
+    showToast(tt47('Письмо отправлено','Letter sent'),entity.title,'check');
+    renderMain();
+  }
+  showModal({title:tt47('Новое письмо','New letter'),subtitle:escapeHtml(tt47('Адресат: '+entity.title,'To: '+entity.title)),body:stepBody,onReady(r){root=r;wireSteps();paintStep();}});
+};
+document.addEventListener('click',e=>{
+  const b=e.target&&e.target.closest?e.target.closest('[data-chat-action="letter"]'):null;
+  if(b){e.stopPropagation();window.ak47SendLetter();}
+},true);
+
+/* ---------- renderMain post-process: badges + YT play binding ---------- */
+const baseRenderMain=renderMain;
+renderMain=function(options){
+  const r=baseRenderMain(options);
+  try{ak47PostProcess();}catch(e){}
+  return r;
+};
+function ak47PostProcess(){
+  // chat head badge (selected chat)
+  try{
+    const strong=document.querySelector('.chat-title strong');
+    if(strong){const entity=getEntity(ui.selectedId);if(entity&&entity.contactCode&&!entity.bot){const b=window.ak47BadgeForCode(entity.contactCode);if(b&&!strong.querySelector('.ak47-badge'))strong.insertAdjacentHTML('beforeend',b);}}
+  }catch(e){}
+  // sidebar list badges
+  try{
+    document.querySelectorAll('.entity-card[data-open-entity]').forEach(card=>{
+      const id=card.dataset.openEntity;const entity=(state.entities||[]).find(e=>e.id===id);
+      if(!entity||!entity.contactCode||entity.bot)return;
+      const nameEl=card.querySelector('.entity-name');if(!nameEl||nameEl.querySelector('.ak47-badge'))return;
+      const b=window.ak47BadgeForCode(entity.contactCode);if(b)nameEl.insertAdjacentHTML('beforeend',b);
+    });
+  }catch(e){}
+  // bind YouTube play buttons
+  try{
+    document.querySelectorAll('.ak47-yt[data-ak47-yt]').forEach(el=>{
+      if(el.dataset.ak47Bound)return;el.dataset.ak47Bound='1';
+      const play=el.querySelector('.ak47-yt-play');if(play)play.addEventListener('click',ev=>{ev.stopPropagation();window.ak47PlayYt(el);});
+      el.addEventListener('click',()=>{if(!el.querySelector('iframe'))window.ak47PlayYt(el);});
+    });
+  }catch(e){}
+}
+})();
 
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
 
