@@ -7878,6 +7878,106 @@ document.addEventListener('click',e=>{
 },{capture:true});
 })();
 
+/* ============================================================================
+   ak50 — Admin panel (admin email only): floating button + a panel with a
+   3D animated Aqua star, a richer stars shop (package presets), and the
+   ability to grant stars / 1-month premium / verified badge to any user.
+   ========================================================================== */
+(function(){
+'use strict';
+if(typeof saveState!=='function')return;
+const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+const isAdmin=(typeof akIsAdmin==='function')?akIsAdmin():false;
+(function css(){
+  if(document.getElementById('ak50-style'))return;
+  const st=document.createElement('style');st.id='ak50-style';
+  st.textContent=`
+.ak50-fab{position:fixed;right:16px;bottom:16px;z-index:900;display:flex;align-items:center;gap:6px;padding:11px 15px;border:0;border-radius:30px;background:linear-gradient(135deg,#0b99aa,#7663d6);color:#fff;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 12px 30px rgba(11,153,170,.45);}
+.ak50-fab:active{transform:scale(.96);}
+.ak50-admin{text-align:center;}
+.ak50-star3d{width:92px;height:92px;margin:6px auto 12px;perspective:320px;}
+.ak50-star-face{width:100%;height:100%;background:linear-gradient(135deg,#ffe89a,#d9a441);clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);box-shadow:0 0 34px rgba(255,214,90,.7);animation:ak50-spin 4.5s linear infinite;transform-style:preserve-3d;}
+@keyframes ak50-spin{0%{transform:rotateY(0deg) rotateX(14deg)}50%{transform:rotateY(180deg) rotateX(-14deg)}100%{transform:rotateY(360deg) rotateX(14deg)}}
+.ak50-admin h3{margin:0 0 2px;font-size:17px;}
+.ak50-admin .ak50-sub{color:var(--ink-soft);font-size:12px;margin-bottom:14px;}
+.ak50-block{border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:12px;text-align:left;background:var(--surface);}
+.ak50-block h4{margin:0 0 10px;font-size:13.5px;display:flex;align-items:center;gap:6px;}
+.ak50-row{display:flex;gap:8px;margin-bottom:8px;}
+.ak50-row input{flex:1;min-width:0;}
+.ak50-pkg-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;}
+.ak50-pkg{flex:1;min-width:70px;border:1px solid var(--line);border-radius:11px;background:var(--surface-strong);padding:9px 6px;cursor:pointer;text-align:center;font-weight:700;font-size:12px;transition:.12s;}
+.ak50-pkg:hover{border-color:rgba(201,148,30,.6);transform:translateY(-1px);}
+.ak50-pkg small{display:block;font-weight:600;color:var(--ink-soft);font-size:10px;margin-top:2px;}
+  `;
+  document.head.appendChild(st);
+})();
+
+const AK50_PACKAGES=[{a:500,n:'Пачка'},{a:1500,n:'Коробка'},{a:5000,n:'Сундук'},{a:10000,n:'Ларец'}];
+
+window.ak50OpenAdmin=function(){
+  if(!(typeof akIsAdmin==='function'?akIsAdmin():false)){showToast(tt('Только для администратора','Admin only'),'','block');return;}
+  const body='<div class="ak50-admin">'+
+    '<div class="ak50-star3d"><div class="ak50-star-face"></div></div>'+
+    '<h3>'+escapeHtml(tt('Админ-панель AquaKotik','AquaKotik admin panel'))+'</h3>'+
+    '<div class="ak50-sub">'+escapeHtml(tt('Звёзды, премиум и верификация для любого пользователя','Stars, premium and verification for any user'))+'</div>'+
+    '<div class="ak50-block"><h4>⭐ '+escapeHtml(tt('Начислить звёзды','Grant stars'))+'</h4>'+
+      '<div class="ak50-pkg-row">'+AK50_PACKAGES.map((p,i)=>'<button class="ak50-pkg" type="button" data-ak50-pkg="'+p.a+'">⭐ '+p.a.toLocaleString()+'<small>'+escapeHtml(p.n)+'</small></button>').join('')+'</div>'+
+      '<div class="ak50-row"><input id="ak50-stars-code" placeholder="'+escapeHtml(tt('Aqua-код получателя','Recipient Aqua code'))+'" maxlength="8"><input id="ak50-stars-amt" type="number" min="1" placeholder="'+escapeHtml(tt('Сумма звёзд','Amount'))+'" style="max-width:120px"></div>'+
+      '<button class="primary-btn" type="button" data-ak50-issue style="width:100%">'+escapeHtml(tt('Начислить звёзды','Grant stars'))+'</button></div>'+
+    '<div class="ak50-block"><h4>👑 '+escapeHtml(tt('Подарить премиум (1 мес.)','Grant 1-month premium'))+'</h4>'+
+      '<div class="ak50-row"><input id="ak50-prem-code" placeholder="'+escapeHtml(tt('Aqua-код получателя','Recipient Aqua code'))+'" maxlength="8"></div>'+
+      '<button class="primary-btn" type="button" data-ak50-prem style="width:100%">'+escapeHtml(tt('Выдать премиум на 1 месяц','Grant 1 month premium'))+'</button></div>'+
+    '<div class="ak50-block"><h4>✓ '+escapeHtml(tt('Верификация / бейдж','Verified badge'))+'</h4>'+
+      '<div class="ak50-row"><input id="ak50-badge-code" placeholder="'+escapeHtml(tt('Aqua-код пользователя','User Aqua code'))+'" maxlength="8"></div>'+
+      '<button class="primary-btn" type="button" data-ak50-badge style="width:100%">'+escapeHtml(tt('Выдать бейдж','Grant badge'))+'</button></div>'+
+  '</div>';
+  showModal({title:tt('Админ-панель','Admin panel'),subtitle:tt('АquaKotik · только админ','AquaKotik · admin only'),wide:true,body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tt('Закрыть','Close'))+'</button>',onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    const codeInput=root.querySelector('#ak50-stars-code');
+    root.querySelectorAll('[data-ak50-pkg]').forEach(b=>b.addEventListener('click',()=>{const amt=root.querySelector('#ak50-stars-amt');if(amt)amt.value=b.dataset.ak50Pkg;if(codeInput)codeInput.focus();}));
+    root.querySelector('[data-ak50-issue]').addEventListener('click',()=>{
+      const c=(root.querySelector('#ak50-stars-code').value||'').trim().toUpperCase();const a=Number(root.querySelector('#ak50-stars-amt').value||0);
+      if(!c){showToast(tt('Введите Aqua-код','Enter the Aqua code'),'','info');return;}
+      if(!(a>0)){showToast(tt('Введите сумму','Enter the amount'),'','info');return;}
+      akLive.post('/api/admin/stars',{code:c,amount:a}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Звёзды начислены','Stars granted'),'⭐ +'+a.toLocaleString()+' → '+c,'star');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
+    });
+    root.querySelector('[data-ak50-prem]').addEventListener('click',()=>{
+      const c=(root.querySelector('#ak50-prem-code').value||'').trim().toUpperCase();
+      if(!c){showToast(tt('Введите Aqua-код','Enter the Aqua code'),'','info');return;}
+      akLive.post('/api/admin/premium',{code:c,months:1}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Премиум выдан','Premium granted'),'👑 1 мес. → '+c,'crown');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
+    });
+    root.querySelector('[data-ak50-badge]').addEventListener('click',()=>{
+      const c=(root.querySelector('#ak50-badge-code').value||'').trim().toUpperCase();
+      if(!c){showToast(tt('Введите Aqua-код','Enter the Aqua code'),'','info');return;}
+      akLive.post('/api/admin/badge',{code:c,verified:true}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Бейдж выдан','Badge granted'),'✓ → '+c,'verified');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
+    });
+  }});
+};
+
+if(isAdmin){
+  const baseRM=(typeof renderMain==='function')?renderMain:null;
+  if(baseRM){
+    renderMain=function(options){
+      const r=baseRM(options);
+      try{ak50EnsureFab();}catch(e){}
+      return r;
+    };
+  }
+  function ak50EnsureFab(){
+    if(!sessionAuthenticated||document.getElementById('ak50-admin-fab'))return;
+    const fab=document.createElement('button');
+    fab.id='ak50-admin-fab';fab.type='button';fab.className='ak50-fab';
+    fab.innerHTML='🛡️ <span>'+escapeHtml(tt('Админ','Admin'))+'</span>';
+    fab.addEventListener('click',()=>window.ak50OpenAdmin());
+    document.body.appendChild(fab);
+  }
+  document.addEventListener('click',e=>{
+    const b=e.target&&e.target.closest?e.target.closest('#ak50-admin-fab'):null;
+    if(b){e.stopPropagation();window.ak50OpenAdmin();}
+  },{capture:true});
+}
+})();
+
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
 
   </script>
