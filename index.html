@@ -7691,6 +7691,193 @@ function ak48PostProcess(){
 }
 })();
 
+/* ============================================================================
+   ak49 — Aqua AI model system: choose from 6 models (each with its own
+   behaviour), "download" a model to the device (30–60s progress + a real
+   .txt model-card file saved by name), AI settings (sliders + switches),
+   and an admin "Train the AI" panel.
+   ========================================================================== */
+(function(){
+'use strict';
+if(typeof saveState!=='function')return;
+const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+(function css(){
+  if(document.getElementById('ak49-style'))return;
+  const st=document.createElement('style');st.id='ak49-style';
+  st.textContent=`
+.ak49-models-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.ak49-model{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface);}
+.ak49-model-sel{border-color:var(--mc);box-shadow:0 0 0 2px color-mix(in srgb,var(--mc) 30%,transparent);}
+.ak49-model-head{display:flex;gap:8px;align-items:center;}
+.ak49-model-e{font-size:22px;}
+.ak49-model-head strong{font-size:12.5px;display:block;line-height:1.2;}
+.ak49-model-head small{color:var(--ink-soft);font-size:10.5px;}
+.ak49-model-dl{margin-left:auto;font-size:10px;color:#0aa06e;white-space:nowrap;}
+.ak49-model p{margin:0;font-size:11.5px;color:var(--ink-soft);flex:1;}
+.ak49-model button{font-size:12px;min-height:36px;}
+.ak49-settings{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);}
+.ak49-settings h4{margin:0 0 10px;font-size:13px;}
+.ak49-slider{display:flex;flex-direction:column;gap:4px;font-size:12px;margin-bottom:10px;}
+.ak49-slider input{width:100%;}
+.ak49-switch{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 0;border-top:1px solid var(--line);cursor:pointer;}
+.ak49-switch input{width:40px;}
+.ak49-train-list{display:flex;flex-direction:column;gap:8px;margin:12px 0;max-height:220px;overflow:auto;}
+.ak49-train-item{font-size:12px;padding:8px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:4px;position:relative;}
+.ak49-train-item button{position:absolute;top:6px;right:6px;min-height:26px;padding:0 8px;}
+.ak49-train-progress{height:22px;border:1px solid var(--line);border-radius:10px;background:var(--surface-strong);position:relative;overflow:hidden;margin-top:12px;}
+.ak49-train-fill{height:100%;width:0;background:linear-gradient(90deg,#0b99aa,#7663d6);transition:width .2s;}
+.ak49-train-progress span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;}
+.ak49-model-chip{font-size:10px;font-weight:700;margin-left:4px;}
+.ak49-dl-overlay{position:fixed;inset:0;z-index:9999;background:rgba(4,20,28,.72);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px;}
+.ak49-dl-card{width:min(420px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:24px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+.ak49-dl-e{font-size:52px;animation:ak48-pulse 1.6s ease-in-out infinite;}
+.ak49-dl-name{font-weight:800;font-size:16px;margin-top:8px;}
+.ak49-dl-file{color:var(--ink-soft);font-size:12px;margin-top:2px;}
+.ak49-dl-bar{height:12px;border-radius:8px;background:var(--surface-strong);overflow:hidden;margin:16px 0 6px;}
+.ak49-dl-fill{height:100%;width:0;background:linear-gradient(90deg,#0b99aa,#7663d6);transition:width .2s;}
+.ak49-dl-pct{font-weight:800;font-size:13px;}
+.ak49-dl-note{color:var(--ink-soft);font-size:12px;margin:8px 0 14px;}
+  `;
+  document.head.appendChild(st);
+})();
+
+const AK49_MODELS=[
+  {id:'ak24',name:'AquaKotik-24B-Q6-W9',size:'24B · Q6_K',file:'AquaKotik-24B-Q6-W9.txt',e:'🧠',color:'#0b99aa',desc:'Общение: большой запас фраз — на один и тот же вопрос отвечает по-разному'},
+  {id:'ak7lite',name:'AquaKotik-7B-Lite',size:'7B · Q4_K_M',file:'AquaKotik-7B-Lite.txt',e:'⚡',color:'#2c9b72',desc:'Быстрые и короткие ответы, работает экономно и мгновенно'},
+  {id:'ak70',name:'AquaKotik-70B-Ultra',size:'70B · Q5_K_M',file:'AquaKotik-70B-Ultra.txt',e:'🔬',color:'#7663d6',desc:'Глубокие развёрнутые ответы с деталями и альтернативами'},
+  {id:'akcrt',name:'AquaKotik-Creative-V2',size:'13B · Q6_K',file:'AquaKotik-Creative-V2.txt',e:'🎨',color:'#e87955',desc:'Творческий стиль: метафоры, идеи, яркие формулировки'},
+  {id:'aktr',name:'AquaKotik-Translate-MX',size:'9B · Q6_K',file:'AquaKotik-Translate-MX.txt',e:'🌐',color:'#d9a441',desc:'Специалист по переводам RU / EN и другим языкам'},
+  {id:'akcode',name:'AquaKotik-Code-Bot',size:'8B · Q8_0',file:'AquaKotik-Code-Bot.txt',e:'💻',color:'#2f6bff',desc:'Технический: код, алгоритмы, точные и короткие ответы'}
+];
+window.AK49_MODELS=AK49_MODELS;
+state.aiModels=state.aiModels||{selected:'ak24',downloaded:{ak24:true},training:[],settings:{temperature:70,creativity:50,longReply:false,emojis:true,smart:true,autocorrect:true}};
+state.aiModels.training=Array.isArray(state.aiModels.training)?state.aiModels.training:[];
+state.aiModels.settings=Object.assign({temperature:70,creativity:50,longReply:false,emojis:true,smart:true,autocorrect:true},state.aiModels.settings);
+function curModel(){return AK49_MODELS.find(m=>m.id===state.aiModels.selected)||AK49_MODELS[0];}
+
+window.ak49DownloadModel=function(m){
+  const ov=document.createElement('div');
+  ov.className='ak49-dl-overlay';
+  ov.innerHTML='<div class="ak49-dl-card"><div class="ak49-dl-e">'+m.e+'</div><div class="ak49-dl-name">'+escapeHtml(m.name)+'</div><div class="ak49-dl-file">'+escapeHtml(m.file)+' · '+escapeHtml(m.size)+'</div><div class="ak49-dl-bar"><div class="ak49-dl-fill" id="ak49-fill"></div></div><div class="ak49-dl-pct" id="ak49-pct">0%</div><div class="ak49-dl-note">'+escapeHtml(tt('Загрузка модели на устройство…','Downloading model to device…'))+'</div><button class="secondary-btn" type="button" id="ak49-skip">'+escapeHtml(tt('Пропустить','Skip'))+'</button></div>';
+  document.body.appendChild(ov);
+  const dur=30000+Math.floor(Math.random()*30000);
+  const start=Date.now();
+  const fill=ov.querySelector('#ak49-fill'),pct=ov.querySelector('#ak49-pct');
+  const timer=setInterval(()=>{const p=Math.min(1,(Date.now()-start)/dur);fill.style.width=(p*100).toFixed(1)+'%';pct.textContent=Math.round(p*100)+'%';if(p>=1)finish();},200);
+  let done=false;
+  function finish(){
+    if(done)return;done=true;clearInterval(timer);
+    const content='AquaKotik Model Card\n====================\nName: '+m.name+'\nParams: '+m.size+'\nDescription: '+m.desc+'\nDownloaded: '+new Date().toISOString()+'\nLicense: AquaKotik Free\nChecksum: '+Math.random().toString(16).slice(2)+'\n\nThis file is a local model descriptor for AquaKotik AI.\n';
+    try{const blob=new Blob([content],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=m.file;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},4000);}catch(e){}
+    state.aiModels.downloaded[m.id]=true;state.aiModels.selected=m.id;saveState();
+    setTimeout(()=>{try{ov.remove();}catch(e){}},250);
+    showToast(tt('Модель загружена','Model downloaded'),m.name,'check');
+    if(sessionAuthenticated)renderMain({preserveScroll:true});
+  }
+  ov.querySelector('#ak49-skip').addEventListener('click',finish);
+  ov.addEventListener('click',e=>{if(e.target===ov)finish();});
+};
+
+window.ak49PickModel=function(){
+  const s=state.aiModels.settings;
+  const isAdmin=(typeof akIsAdmin==='function')?akIsAdmin():false;
+  const cards=AK49_MODELS.map(m=>{
+    const dl=!!state.aiModels.downloaded[m.id];const sel=state.aiModels.selected===m.id;
+    const short=m.name.split('-');const chip=short[0]+' '+short[1];
+    return '<div class="ak49-model'+(sel?' ak49-model-sel':'')+'" style="--mc:'+m.color+'"><div class="ak49-model-head"><span class="ak49-model-e">'+m.e+'</span><div><strong>'+escapeHtml(m.name)+'</strong><small>'+escapeHtml(m.size)+'</small></div>'+(dl?'<span class="ak49-model-dl">✓</span>':'')+'</div><p>'+escapeHtml(m.desc)+'</p>'+(dl?('<button class="primary-btn" type="button" data-ak49-use="'+m.id+'">'+(sel?escapeHtml(tt('Активна','Active')):escapeHtml(tt('Выбрать','Use')))+escapeHtml(chip)+'</button>'):('<button class="secondary-btn" type="button" data-ak49-dl="'+m.id+'">⬇ '+escapeHtml(tt('Скачать','Download'))+' ('+escapeHtml(chip)+')</button>'))+'</div>';
+  }).join('');
+  const body='<div class="ak49-models-grid">'+cards+'</div>'+
+    '<div class="ak49-settings"><h4>⚙️ '+escapeHtml(tt('Настройки ИИ','AI settings'))+'</h4>'+
+    '<label class="ak49-slider"><span>'+escapeHtml(tt('Температура','Temperature'))+' <b id="ak49-temp-v">'+s.temperature+'</b></span><input type="range" id="ak49-temp" min="0" max="100" value="'+s.temperature+'"></label>'+
+    '<label class="ak49-slider"><span>'+escapeHtml(tt('Творчество','Creativity'))+' <b id="ak49-cre-v">'+s.creativity+'</b></span><input type="range" id="ak49-cre" min="0" max="100" value="'+s.creativity+'"></label>'+
+    '<label class="ak49-switch"><span>'+escapeHtml(tt('Длинные ответы','Long replies'))+'</span><input type="checkbox" id="ak49-long" '+(s.longReply?'checked':'')+'></label>'+
+    '<label class="ak49-switch"><span>'+escapeHtml(tt('Эмодзи в ответах','Emojis in replies'))+'</span><input type="checkbox" id="ak49-emoji" '+(s.emojis!==false?'checked':'')+'></label>'+
+    '<label class="ak49-switch"><span>'+escapeHtml(tt('Смарт-ответы','Smart replies'))+'</span><input type="checkbox" id="ak49-smart" '+(s.smart!==false?'checked':'')+'></label>'+
+    '<label class="ak49-switch"><span>'+escapeHtml(tt('Авто-исправление ошибок','Auto-correct'))+'</span><input type="checkbox" id="ak49-correct" '+(s.autocorrect!==false?'checked':'')+'></label></div>'+
+    (isAdmin?('<button class="primary-btn" type="button" data-ak49-train style="margin-top:12px;width:100%">🎓 '+escapeHtml(tt('Обучить ИИ','Train the AI'))+'</button>'):'');
+  showModal({title:tt('Модели Aqua AI','Aqua AI models'),subtitle:tt('Выберите и настройте модель','Choose and configure a model'),wide:true,body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tt('Закрыть','Close'))+'</button>',onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    root.querySelectorAll('[data-ak49-dl]').forEach(b=>b.addEventListener('click',()=>{const m=AK49_MODELS.find(x=>x.id===b.dataset.ak49Dl);if(m)window.ak49DownloadModel(m);}));
+    root.querySelectorAll('[data-ak49-use]').forEach(b=>b.addEventListener('click',()=>{state.aiModels.selected=b.dataset.ak49Use;saveState();closeModal();const m=AK49_MODELS.find(x=>x.id===b.dataset.ak49Use);showToast(tt('Модель выбрана','Model selected'),m.name,'check');if(sessionAuthenticated)renderMain({preserveScroll:true});}));
+    const tEl=root.querySelector('#ak49-temp'),cEl=root.querySelector('#ak49-cre');
+    if(tEl)tEl.addEventListener('input',()=>{state.aiModels.settings.temperature=+tEl.value;const v=root.querySelector('#ak49-temp-v');if(v)v.textContent=tEl.value;saveState();});
+    if(cEl)cEl.addEventListener('input',()=>{state.aiModels.settings.creativity=+cEl.value;const v=root.querySelector('#ak49-cre-v');if(v)v.textContent=cEl.value;saveState();});
+    [['#ak49-long','longReply'],['#ak49-emoji','emojis'],['#ak49-smart','smart'],['#ak49-correct','autocorrect']].forEach(pair=>{const el=root.querySelector(pair[0]);if(el)el.addEventListener('change',()=>{state.aiModels.settings[pair[1]]=el.checked;saveState();});});
+    const tr=root.querySelector('[data-ak49-train]');if(tr)tr.addEventListener('click',()=>{closeModal();window.ak49TrainAI();});
+  }});
+};
+
+window.ak49TrainAI=function(){
+  if(!(typeof akIsAdmin==='function'?akIsAdmin():false)){showToast(tt('Только для администратора','Admin only'),'','block');return;}
+  const tr=state.aiModels.training||[];
+  const body='<p style="color:var(--ink-soft);font-size:12.5px">'+escapeHtml(tt('Добавьте знания в формате «Вопрос: … Ответ: …» (каждая пара — через пустую строку). После обучения ИИ использует их в ответах.','Add knowledge as "Question: … Answer: …" (each pair separated by an empty line). After training the AI uses them in replies.'))+'</p>'+
+    '<div class="field"><textarea id="ak49-train-input" rows="6" placeholder="'+escapeHtml(tt('Вопрос: Кто основал AquaKotik?\nОтвет: Команда AquaKotik.\n\nВопрос: Сколько стоит Premium?\nОтвет: 1000 звёзд.','Question: Who founded AquaKotik?\nAnswer: The AquaKotik team.\n\nQuestion: How much is Premium?\nAnswer: 1000 stars.'))+'"></textarea></div>'+
+    (tr.length?('<div class="ak49-train-list">'+tr.map((t,i)=>'<div class="ak49-train-item"><b>❓</b> '+escapeHtml(t.q)+'<span><b>✅</b> '+escapeHtml(t.a)+'</span><button class="small-btn" type="button" data-ak49-trdel="'+i+'">✕</button></div>').join('')+'</div>'):'')+
+    '<button class="primary-btn" type="button" data-ak49-train-go>🎓 '+escapeHtml(tt('Начать обучение','Start training'))+'</button>';
+  showModal({title:tt('Обучение Aqua AI','Training Aqua AI'),subtitle:tt('Панель администратора','Admin panel'),wide:true,body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tt('Закрыть','Close'))+'</button>',onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    root.querySelectorAll('[data-ak49-trdel]').forEach(b=>b.addEventListener('click',()=>{state.aiModels.training.splice(+b.dataset.ak49Trdel,1);saveState();closeModal();window.ak49TrainAI();}));
+    const go=root.querySelector('[data-ak49-train-go]');
+    if(go)go.addEventListener('click',()=>{
+      const txt=root.querySelector('#ak49-train-input').value.trim();
+      if(!txt){showToast(tt('Введите данные для обучения','Enter training data'),'','info');return;}
+      const pairs=txt.split(/\n\s*\n/).map(b=>{const lines=b.split('\n');const ql=lines.find(l=>/вопрос|question/i.test(l));const al=lines.find(l=>/ответ|answer/i.test(l));const qs=(ql||'').replace(/^(вопрос|question)[:\s-]*/i,'').trim();const as=(al||'').replace(/^(ответ|answer)[:\s-]*/i,'').trim();return qs&&as?{q:qs,a:as}:null;}).filter(Boolean);
+      const bar=document.createElement('div');bar.className='ak49-train-progress';bar.innerHTML='<div class="ak49-train-fill" id="ak49-tf"></div><span id="ak49-tt">'+escapeHtml(tt('Обучение…','Training…'))+' 0%</span>';
+      const host=root.querySelector('.modal-body')||root;host.appendChild(bar);
+      const dur=8000,start=Date.now();const tf=bar.querySelector('#ak49-tf'),ttEl=bar.querySelector('#ak49-tt');
+      const timer=setInterval(()=>{const p=Math.min(1,(Date.now()-start)/dur);tf.style.width=(p*100).toFixed(0)+'%';ttEl.textContent=tt('Обучение…','Training…')+' '+Math.round(p*100)+'%';if(p>=1){clearInterval(timer);state.aiModels.training=state.aiModels.training||[];pairs.forEach(p2=>{if(!state.aiModels.training.some(x=>x.q===p2.q))state.aiModels.training.push(p2);});saveState();closeModal();showToast(tt('Обучение завершено','Training complete'),'+'+pairs.length+' '+tt('знаний','knowledge items'),'check');if(sessionAuthenticated)renderMain({preserveScroll:true});}},200);
+    });
+  }});
+};
+
+/* ---- model-aware reply generation (wraps the base AI) ---- */
+const baseMakeReply=(typeof makeLocalAiReply==='function')?makeLocalAiReply:null;
+if(baseMakeReply){
+  makeLocalAiReply=function(input,entity){
+    let reply=baseMakeReply(input,entity);
+    if(entity&&entity.type==='assistant'&&reply)reply=ak49ApplyModel(reply,input);
+    return reply;
+  };
+}
+function ak49ApplyModel(reply,input){
+  const ru=state.language==='ru';
+  const m=curModel();const s=state.aiModels.settings;const text=String(input||'').toLowerCase();
+  const pool=(ru?['Кстати, вот ещё мысль: ','Хороший вопрос. ','Думаю так: ','По-моему: ','Смотри: ']:['By the way, another thought: ','Good question. ','I would say: ','In my view: ','Look: ']);
+  if(m.id==='ak24'){reply=pool[Math.floor(Math.random()*pool.length)]+reply;}
+  else if(m.id==='ak7lite'){const parts=String(reply).split('. ');reply=(parts.length>1?parts.slice(0,2).join('. '):String(reply))+(String(reply).trim().endsWith('.')?'':' .');}
+  else if(m.id==='ak70'){reply=reply+(ru?' Дополнительно учтите альтернативные варианты, риски и критерии выбора — так решение будет устойчивее.':' Additionally, weigh the alternatives, risks and selection criteria — that makes the decision more robust.');}
+  else if(m.id==='akcrt'){reply=reply+(ru?' ✨ По-моему, это можно подать ярче и с характером.':' ✨ I think this can be framed brighter and with more character.');}
+  else if(m.id==='akcode'){reply=(ru?'📌 Технически: ':'📌 Technically: ')+reply;}
+  else if(m.id==='aktr'){if(/перев|translate/i.test(text))reply=reply;}
+  if(s.longReply&&m.id!=='ak70'){reply+=ru?' Коротко: начните с простого проверяемого шага и усложняйте только после проверки.':' Briefly: start with a simple testable step and only add complexity after verifying it.';}
+  if(s.emojis===false){reply=String(reply).replace(/[✨🎓📌🎨🔬💻🌐⚡🧠]/g,'').replace(/\s{2,}/g,' ').trim();}
+  const tr=state.aiModels.training||[];
+  const hit=tr.find(t=>{const kw=String(t.q||'').toLowerCase().split(/[.\s,;:]+/).filter(w=>w.length>3);return kw.some(k=>text.includes(k));});
+  if(hit&&hit.a){reply=(ru?'🎓 ':'🎓 ')+hit.a+'. '+reply;}
+  return reply;
+}
+
+/* ---- assistant chat head: model chip (opens the model picker) ---- */
+const baseRenderChatPane=(typeof renderChatPane==='function')?renderChatPane:null;
+if(baseRenderChatPane){
+  renderChatPane=function(entity){
+    let html=baseRenderChatPane(entity);
+    try{
+      if(entity&&entity.type==='assistant'){
+        const m=curModel();
+        const short=m.name.split('-');
+        html=html.replace(/<div class="chat-head-actions">/, '<button class="icon-btn" type="button" data-ak49-model style="border-color:'+m.color+';color:'+m.color+';background:transparent">'+m.e+'<span class="ak49-model-chip">'+escapeHtml(short[0][0]+short[1])+'</span></button><div class="chat-head-actions">');
+      }
+    }catch(e){}
+    return html;
+  };
+}
+document.addEventListener('click',e=>{
+  const b=e.target&&e.target.closest?e.target.closest('[data-ak49-model]'):null;
+  if(b){e.stopPropagation();window.ak49PickModel();}
+},{capture:true});
+})();
+
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
 
   </script>
