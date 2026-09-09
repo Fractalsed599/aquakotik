@@ -6138,12 +6138,12 @@ function ak43ProfileCards(){
     </div>
   </section>
   <section class="panel-card ak43-card">
-    <div class="price-title"><span class="setting-icon">👑</span><div><h3>${t('Premium','Premium')}</h3><p>${premium?t('До '+new Date(state.premiumUntil).toLocaleDateString(state.language==='ru'?'ru':'en'),'Until '+new Date(state.premiumUntil).toLocaleDateString(state.language==='ru'?'ru':'en')):t('Шрифт, акцент, расписание, безлимит контактов','Font, accent, schedule, unlimited contacts')}</p></div></div>
+    <div class="price-title"><span class="setting-icon">${icon('crown')}</span><div><h3>${t('Premium','Premium')}</h3><p>${premium?t('До '+new Date(state.premiumUntil).toLocaleDateString(state.language==='ru'?'ru':'en'),'Until '+new Date(state.premiumUntil).toLocaleDateString(state.language==='ru'?'ru':'en')):t('Шрифт, акцент, расписание, безлимит контактов','Font, accent, schedule, unlimited contacts')}</p></div></div>
     ${premium?`<div class="ak43-premium-on">👑 ${t('Premium активен','Premium is on')}</div>`
       :`<button class="primary-btn full-action" type="button" data-ak43="premium-buy">⭐ ${t('Активировать за '+AK43_PREMIUM_PRICE+'⭐','Activate for '+AK43_PREMIUM_PRICE+' stars')}</button>
       <small class="ak43-qr-hint">${t('Ваш баланс: '+Number(state.stars||0)+'⭐','Your balance: '+Number(state.stars||0)+' stars')}</small>`}
     <div class="settings-list" style="margin-top:10px">
-      <div class="setting-row"><span class="setting-icon">🅰️</span><span class="setting-copy"><strong>${t('Шрифт профиля и чатов','Font for profile and chats')}</strong><span>${premium?t('Premium','Premium'):t('Доступно с Premium','Premium only')}</span></span>
+      <div class="setting-row"><span class="setting-icon">${icon('font')}</span><span class="setting-copy"><strong>${t('Шрифт профиля и чатов','Font for profile and chats')}</strong><span>${premium?t('Premium','Premium'):t('Доступно с Premium','Premium only')}</span></span>
         <select id="ak43-font" class="ak43-font-select" ${premium?'':'disabled'}>
           <option value="system" ${font==='system'?'selected':''}>${t('Системный','System')}</option>
           <option value="rounded" ${font==='rounded'?'selected':''}>${t('Круглый','Rounded')}</option>
@@ -6151,20 +6151,20 @@ function ak43ProfileCards(){
           <option value="serif" ${font==='serif'?'selected':''}>${t('Классика','Serif')}</option>
         </select>
       </div>
-      <div class="setting-row"><span class="setting-icon">🎨</span><span class="setting-copy"><strong>${t('Акцентный цвет','Accent color')}</strong><span>${premium?t('Premium','Premium'):t('Доступно с Premium','Premium only')}</span></span>
+      <div class="setting-row"><span class="setting-icon">${icon('palette')}</span><span class="setting-copy"><strong>${t('Акцентный цвет','Accent color')}</strong><span>${premium?t('Premium','Premium'):t('Доступно с Premium','Premium only')}</span></span>
         <span class="ak43-accent-row">
           ${['ocean','sunset','violet','gold','mint'].map(a=>`<button class="ak43-accent ${accent===a?'on':''}" type="button" data-ak43="accent" data-accent="${a}" ${premium?'':'disabled'} style="--sw:${a==='ocean'?'#34c7d5':a==='sunset'?'#e87955':a==='violet'?'#7663d6':a==='gold'?'#d9a441':'#2c9b72'}" aria-label="${a}"></button>`).join('')}
         </span>
       </div>
-      <div class="setting-row"><span class="setting-icon">🕐</span><span class="setting-copy"><strong>${t('Время работы','Working hours')}</strong><span>${premium?(sched.enabled?(schedState.open?t('Сейчас открыто · до '+schedState.until,'Open now · until '+schedState.until):t('Сейчас закрыто · до '+schedState.until,'Closed now · until '+schedState.until)):t('Выключено — всегда открыто','Off — always open')):t('Доступно с Premium','Premium only')}</span></span>
+      <div class="setting-row"><span class="setting-icon">${icon('clock')}</span><span class="setting-copy"><strong>${t('Время работы','Working hours')}</strong><span>${premium?(sched.enabled?(schedState.open?t('Сейчас открыто · до '+schedState.until,'Open now · until '+schedState.until):t('Сейчас закрыто · до '+schedState.until,'Closed now · until '+schedState.until)):t('Выключено — всегда открыто','Off — always open')):t('Доступно с Premium','Premium only')}</span></span>
         <label class="switch"><input id="ak43-sched-on" type="checkbox" ${sched.enabled?'checked':''} ${premium?'':'disabled'}><span class="switch-track"></span></label>
       </div>
       ${sched.enabled?`<div class="ak43-sched-times"><input id="ak43-sched-from" type="time" value="${escapeHtml(sched.from)}" ${premium?'':'disabled'}><span>${t('до','to')}</span><input id="ak43-sched-to" type="time" value="${escapeHtml(sched.to)}" ${premium?'':'disabled'}></div>`:''}
-      <div class="setting-row"><span class="setting-icon">⭐</span><span class="setting-copy"><strong>${t('Писать можно только за звёзды','Messages only for stars')}</strong><span>${premium?(me.starsOnly?t('Входящие сообщения — '+(Number(me.messagePrice)||5)+'⭐ вам','Incoming messages cost '+(Number(me.messagePrice)||5)+' stars (yours)'):t('Выключено','Off')):t('Доступно с Premium','Premium only')}</span></span>
+      <div class="setting-row"><span class="setting-icon">${icon('star')}</span><span class="setting-copy"><strong>${t('Писать можно только за звёзды','Messages only for stars')}</strong><span>${premium?(me.starsOnly?t('Входящие сообщения — '+(Number(me.messagePrice)||5)+'⭐ вам','Incoming messages cost '+(Number(me.messagePrice)||5)+' stars (yours)'):t('Выключено','Off')):t('Доступно с Premium','Premium only')}</span></span>
         <label class="switch"><input id="ak43-starsonly" type="checkbox" ${me.starsOnly?'checked':''} ${premium?'':'disabled'}><span class="switch-track"></span></label>
       </div>
-      ${me.starsOnly?`<div class="setting-row"><span class="setting-icon">💰</span><span class="setting-copy"><strong>${t('Цена сообщения','Message price')}</strong><span>${t('Сколько звёзд платят за входящее сообщение','Stars per incoming message')}</span></span><select id="ak43-msgprice">${[1,5,10,25,50,100].map(n=>`<option value="${n}" ${(Number(me.messagePrice)||5)===n?'selected':''}>${n}⭐</option>`).join('')}</select></div>`:''}
-      <div class="setting-row"><span class="setting-icon">👥</span><span class="setting-copy"><strong>${t('Контакты','Contacts')}</strong><span>${premium?t('Безлимита','Unlimited'):'5 '+t('бесплатно · больше — Premium','free · more with Premium')}</span></span></div>
+      ${me.starsOnly?`<div class="setting-row"><span class="setting-icon">${icon('star')}</span><span class="setting-copy"><strong>${t('Цена сообщения','Message price')}</strong><span>${t('Сколько звёзд платят за входящее сообщение','Stars per incoming message')}</span></span><select id="ak43-msgprice">${[1,5,10,25,50,100].map(n=>`<option value="${n}" ${(Number(me.messagePrice)||5)===n?'selected':''}>${n}⭐</option>`).join('')}</select></div>`:''}
+      <div class="setting-row"><span class="setting-icon">${icon('users')}</span><span class="setting-copy"><strong>${t('Контакты','Contacts')}</strong><span>${premium?t('Безлимита','Unlimited'):'5 '+t('бесплатно · больше — Premium','free · more with Premium')}</span></span></div>
     </div>
   </section>
   <section class="panel-card ak43-card">
@@ -7709,14 +7709,14 @@ const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en
 .ak49-model{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--surface);}
 .ak49-model-sel{border-color:var(--mc);box-shadow:0 0 0 2px color-mix(in srgb,var(--mc) 30%,transparent);}
 .ak49-model-head{display:flex;gap:8px;align-items:center;}
-.ak49-model-e{font-size:22px;}
+.ak49-model-e{display:inline-flex;align-items:center;}.ak49-model-e svg{width:22px;height:22px;}.ak49-h-ic{width:16px;height:16px;vertical-align:-3px;flex:none;}.ak49-model-ic{width:15px;height:15px;vertical-align:-2px;flex:none;}.ak49-train-item .ak49-tr-q,.ak49-train-item .ak49-tr-a{display:flex;align-items:center;gap:5px;}.ak49-train-item .ak49-tr-q svg,.ak49-train-item .ak49-tr-a svg{width:14px;height:14px;flex:none;}
 .ak49-model-head strong{font-size:12.5px;display:block;line-height:1.2;}
 .ak49-model-head small{color:var(--ink-soft);font-size:10.5px;}
 .ak49-model-dl{margin-left:auto;font-size:10px;color:#0aa06e;white-space:nowrap;}
 .ak49-model p{margin:0;font-size:11.5px;color:var(--ink-soft);flex:1;}
 .ak49-model button{font-size:12px;min-height:36px;}
 .ak49-settings{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);}
-.ak49-settings h4{margin:0 0 10px;font-size:13px;}
+.ak49-settings h4{margin:0 0 10px;font-size:13px;display:flex;align-items:center;gap:6px;}.ak49-settings h4 svg{width:16px;height:16px;flex:none;}
 .ak49-slider{display:flex;flex-direction:column;gap:4px;font-size:12px;margin-bottom:10px;}
 .ak49-slider input{width:100%;}
 .ak49-switch{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 0;border-top:1px solid var(--line);cursor:pointer;}
@@ -7730,7 +7730,7 @@ const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en
 .ak49-model-chip{font-size:10px;font-weight:700;margin-left:4px;}
 .ak49-dl-overlay{position:fixed;inset:0;z-index:9999;background:rgba(4,20,28,.72);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px;}
 .ak49-dl-card{width:min(420px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:24px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.5);}
-.ak49-dl-e{font-size:52px;animation:ak48-pulse 1.6s ease-in-out infinite;}
+.ak49-dl-e{display:flex;justify-content:center;animation:ak48-pulse 1.6s ease-in-out infinite;}.ak49-dl-e svg{width:48px;height:48px;}
 .ak49-dl-name{font-weight:800;font-size:16px;margin-top:8px;}
 .ak49-dl-file{color:var(--ink-soft);font-size:12px;margin-top:2px;}
 .ak49-dl-bar{height:12px;border-radius:8px;background:var(--surface-strong);overflow:hidden;margin:16px 0 6px;}
@@ -7741,13 +7741,24 @@ const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en
   document.head.appendChild(st);
 })();
 
+Object.assign(ICONS,{
+  chip:'<rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="10" y="10" width="4" height="4" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>',
+  bolt:'<path d="M13 2 5 13h5l-1 9 8-11h-5l1-9z"/>',
+  flask:'<path d="M9 3h6M10 3v5l-5 9.5A2 2 0 0 0 6.8 21h10.4a2 2 0 0 0 1.8-3.5L14 8V3"/><path d="M7.5 15h9"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/>',
+  code:'<path d="M8 8 4 12l4 4M16 8l4 4-4 4M13.5 6l-3 12"/>',
+  download:'<path d="M12 3v11M7.5 10.5 12 15l4.5-4.5M4 20h16"/>',
+  checkmark:'<path d="M5 12.5l4.5 4.5L19 7"/>',
+  font:'<path d="M5 20 12 4l7 16M8 15h8"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.2 2"/>'
+});
 const AK49_MODELS=[
-  {id:'ak24',name:'AquaKotik-24B-Q6-W9',size:'24B · Q6_K',file:'AquaKotik-24B-Q6-W9.txt',e:'🧠',color:'#0b99aa',desc:'Общение: большой запас фраз — на один и тот же вопрос отвечает по-разному'},
-  {id:'ak7lite',name:'AquaKotik-7B-Lite',size:'7B · Q4_K_M',file:'AquaKotik-7B-Lite.txt',e:'⚡',color:'#2c9b72',desc:'Быстрые и короткие ответы, работает экономно и мгновенно'},
-  {id:'ak70',name:'AquaKotik-70B-Ultra',size:'70B · Q5_K_M',file:'AquaKotik-70B-Ultra.txt',e:'🔬',color:'#7663d6',desc:'Глубокие развёрнутые ответы с деталями и альтернативами'},
-  {id:'akcrt',name:'AquaKotik-Creative-V2',size:'13B · Q6_K',file:'AquaKotik-Creative-V2.txt',e:'🎨',color:'#e87955',desc:'Творческий стиль: метафоры, идеи, яркие формулировки'},
-  {id:'aktr',name:'AquaKotik-Translate-MX',size:'9B · Q6_K',file:'AquaKotik-Translate-MX.txt',e:'🌐',color:'#d9a441',desc:'Специалист по переводам RU / EN и другим языкам'},
-  {id:'akcode',name:'AquaKotik-Code-Bot',size:'8B · Q8_0',file:'AquaKotik-Code-Bot.txt',e:'💻',color:'#2f6bff',desc:'Технический: код, алгоритмы, точные и короткие ответы'}
+  {id:'ak24',name:'AquaKotik-24B-Q6-W9',size:'24B · Q6_K',file:'AquaKotik-24B-Q6-W9.txt',e:'chip',color:'#0b99aa',desc:'Общение: большой запас фраз — на один и тот же вопрос отвечает по-разному'},
+  {id:'ak7lite',name:'AquaKotik-7B-Lite',size:'7B · Q4_K_M',file:'AquaKotik-7B-Lite.txt',e:'bolt',color:'#2c9b72',desc:'Быстрые и короткие ответы, работает экономно и мгновенно'},
+  {id:'ak70',name:'AquaKotik-70B-Ultra',size:'70B · Q5_K_M',file:'AquaKotik-70B-Ultra.txt',e:'flask',color:'#7663d6',desc:'Глубокие развёрнутые ответы с деталями и альтернативами'},
+  {id:'akcrt',name:'AquaKotik-Creative-V2',size:'13B · Q6_K',file:'AquaKotik-Creative-V2.txt',e:'palette',color:'#e87955',desc:'Творческий стиль: метафоры, идеи, яркие формулировки'},
+  {id:'aktr',name:'AquaKotik-Translate-MX',size:'9B · Q6_K',file:'AquaKotik-Translate-MX.txt',e:'globe',color:'#d9a441',desc:'Специалист по переводам RU / EN и другим языкам'},
+  {id:'akcode',name:'AquaKotik-Code-Bot',size:'8B · Q8_0',file:'AquaKotik-Code-Bot.txt',e:'code',color:'#2f6bff',desc:'Технический: код, алгоритмы, точные и короткие ответы'}
 ];
 window.AK49_MODELS=AK49_MODELS;
 state.aiModels=state.aiModels||{selected:'ak24',downloaded:{ak24:true},training:[],settings:{temperature:70,creativity:50,longReply:false,emojis:true,smart:true,autocorrect:true}};
@@ -7758,7 +7769,7 @@ function curModel(){return AK49_MODELS.find(m=>m.id===state.aiModels.selected)||
 window.ak49DownloadModel=function(m){
   const ov=document.createElement('div');
   ov.className='ak49-dl-overlay';
-  ov.innerHTML='<div class="ak49-dl-card"><div class="ak49-dl-e">'+m.e+'</div><div class="ak49-dl-name">'+escapeHtml(m.name)+'</div><div class="ak49-dl-file">'+escapeHtml(m.file)+' · '+escapeHtml(m.size)+'</div><div class="ak49-dl-bar"><div class="ak49-dl-fill" id="ak49-fill"></div></div><div class="ak49-dl-pct" id="ak49-pct">0%</div><div class="ak49-dl-note">'+escapeHtml(tt('Загрузка модели на устройство…','Downloading model to device…'))+'</div><button class="secondary-btn" type="button" id="ak49-skip">'+escapeHtml(tt('Пропустить','Skip'))+'</button></div>';
+  ov.innerHTML='<div class="ak49-dl-card"><div class="ak49-dl-e">'+icon(m.e,'ak49-dl-ic')+'</div><div class="ak49-dl-name">'+escapeHtml(m.name)+'</div><div class="ak49-dl-file">'+escapeHtml(m.file)+' · '+escapeHtml(m.size)+'</div><div class="ak49-dl-bar"><div class="ak49-dl-fill" id="ak49-fill"></div></div><div class="ak49-dl-pct" id="ak49-pct">0%</div><div class="ak49-dl-note">'+escapeHtml(tt('Загрузка модели на устройство…','Downloading model to device…'))+'</div><button class="secondary-btn" type="button" id="ak49-skip">'+escapeHtml(tt('Пропустить','Skip'))+'</button></div>';
   document.body.appendChild(ov);
   const dur=30000+Math.floor(Math.random()*30000);
   const start=Date.now();
@@ -7784,17 +7795,17 @@ window.ak49PickModel=function(){
   const cards=AK49_MODELS.map(m=>{
     const dl=!!state.aiModels.downloaded[m.id];const sel=state.aiModels.selected===m.id;
     const short=m.name.split('-');const chip=short[0]+' '+short[1];
-    return '<div class="ak49-model'+(sel?' ak49-model-sel':'')+'" style="--mc:'+m.color+'"><div class="ak49-model-head"><span class="ak49-model-e">'+m.e+'</span><div><strong>'+escapeHtml(m.name)+'</strong><small>'+escapeHtml(m.size)+'</small></div>'+(dl?'<span class="ak49-model-dl">✓</span>':'')+'</div><p>'+escapeHtml(m.desc)+'</p>'+(dl?('<button class="primary-btn" type="button" data-ak49-use="'+m.id+'">'+(sel?escapeHtml(tt('Активна','Active')):escapeHtml(tt('Выбрать','Use')))+escapeHtml(chip)+'</button>'):('<button class="secondary-btn" type="button" data-ak49-dl="'+m.id+'">⬇ '+escapeHtml(tt('Скачать','Download'))+' ('+escapeHtml(chip)+')</button>'))+'</div>';
+    return '<div class="ak49-model'+(sel?' ak49-model-sel':'')+'" style="--mc:'+m.color+'"><div class="ak49-model-head"><span class="ak49-model-e">'+icon(m.e,'ak49-model-ic')+'</span><div><strong>'+escapeHtml(m.name)+'</strong><small>'+escapeHtml(m.size)+'</small></div>'+(dl?'<span class="ak49-model-dl">✓</span>':'')+'</div><p>'+escapeHtml(m.desc)+'</p>'+(dl?('<button class="primary-btn" type="button" data-ak49-use="'+m.id+'">'+(sel?escapeHtml(tt('Активна','Active')):escapeHtml(tt('Выбрать','Use')))+escapeHtml(chip)+'</button>'):('<button class="secondary-btn" type="button" data-ak49-dl="'+m.id+'">'+icon('download','ak49-model-ic')+' '+escapeHtml(tt('Скачать','Download'))+' ('+escapeHtml(chip)+')</button>'))+'</div>';
   }).join('');
   const body='<div class="ak49-models-grid">'+cards+'</div>'+
-    '<div class="ak49-settings"><h4>⚙️ '+escapeHtml(tt('Настройки ИИ','AI settings'))+'</h4>'+
+    '<div class="ak49-settings"><h4>'+icon('sliders','ak49-h-ic')+escapeHtml(tt('Настройки ИИ','AI settings'))+'</h4>'+
     '<label class="ak49-slider"><span>'+escapeHtml(tt('Температура','Temperature'))+' <b id="ak49-temp-v">'+s.temperature+'</b></span><input type="range" id="ak49-temp" min="0" max="100" value="'+s.temperature+'"></label>'+
     '<label class="ak49-slider"><span>'+escapeHtml(tt('Творчество','Creativity'))+' <b id="ak49-cre-v">'+s.creativity+'</b></span><input type="range" id="ak49-cre" min="0" max="100" value="'+s.creativity+'"></label>'+
     '<label class="ak49-switch"><span>'+escapeHtml(tt('Длинные ответы','Long replies'))+'</span><input type="checkbox" id="ak49-long" '+(s.longReply?'checked':'')+'></label>'+
     '<label class="ak49-switch"><span>'+escapeHtml(tt('Эмодзи в ответах','Emojis in replies'))+'</span><input type="checkbox" id="ak49-emoji" '+(s.emojis!==false?'checked':'')+'></label>'+
     '<label class="ak49-switch"><span>'+escapeHtml(tt('Смарт-ответы','Smart replies'))+'</span><input type="checkbox" id="ak49-smart" '+(s.smart!==false?'checked':'')+'></label>'+
     '<label class="ak49-switch"><span>'+escapeHtml(tt('Авто-исправление ошибок','Auto-correct'))+'</span><input type="checkbox" id="ak49-correct" '+(s.autocorrect!==false?'checked':'')+'></label></div>'+
-    (isAdmin?('<button class="primary-btn" type="button" data-ak49-train style="margin-top:12px;width:100%">🎓 '+escapeHtml(tt('Обучить ИИ','Train the AI'))+'</button>'):'');
+    (isAdmin?('<button class="primary-btn" type="button" data-ak49-train style="margin-top:12px;width:100%">'+icon('chip','ak49-h-ic')+escapeHtml(tt('Обучить ИИ','Train the AI'))+'</button>'):'');
   showModal({title:tt('Модели Aqua AI','Aqua AI models'),subtitle:tt('Выберите и настройте модель','Choose and configure a model'),wide:true,body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tt('Закрыть','Close'))+'</button>',onReady(root){
     root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
     root.querySelectorAll('[data-ak49-dl]').forEach(b=>b.addEventListener('click',()=>{const m=AK49_MODELS.find(x=>x.id===b.dataset.ak49Dl);if(m)window.ak49DownloadModel(m);}));
@@ -7812,8 +7823,8 @@ window.ak49TrainAI=function(){
   const tr=state.aiModels.training||[];
   const body='<p style="color:var(--ink-soft);font-size:12.5px">'+escapeHtml(tt('Добавьте знания в формате «Вопрос: … Ответ: …» (каждая пара — через пустую строку). После обучения ИИ использует их в ответах.','Add knowledge as "Question: … Answer: …" (each pair separated by an empty line). After training the AI uses them in replies.'))+'</p>'+
     '<div class="field"><textarea id="ak49-train-input" rows="6" placeholder="'+escapeHtml(tt('Вопрос: Кто основал AquaKotik?\nОтвет: Команда AquaKotik.\n\nВопрос: Сколько стоит Premium?\nОтвет: 1000 звёзд.','Question: Who founded AquaKotik?\nAnswer: The AquaKotik team.\n\nQuestion: How much is Premium?\nAnswer: 1000 stars.'))+'"></textarea></div>'+
-    (tr.length?('<div class="ak49-train-list">'+tr.map((t,i)=>'<div class="ak49-train-item"><b>❓</b> '+escapeHtml(t.q)+'<span><b>✅</b> '+escapeHtml(t.a)+'</span><button class="small-btn" type="button" data-ak49-trdel="'+i+'">✕</button></div>').join('')+'</div>'):'')+
-    '<button class="primary-btn" type="button" data-ak49-train-go>🎓 '+escapeHtml(tt('Начать обучение','Start training'))+'</button>';
+    (tr.length?('<div class="ak49-train-list">'+tr.map((t,i)=>'<div class="ak49-train-item"><span class="ak49-tr-q">'+icon('info','ak49-h-ic')+escapeHtml(t.q)+'</span><span class="ak49-tr-a">'+icon('checkmark','ak49-h-ic')+escapeHtml(t.a)+'</span><button class="small-btn" type="button" data-ak49-trdel="'+i+'">✕</button></div>').join('')+'</div>'):'')+
+    '<button class="primary-btn" type="button" data-ak49-train-go>'+icon('chip','ak49-h-ic')+escapeHtml(tt('Начать обучение','Start training'))+'</button>';
   showModal({title:tt('Обучение Aqua AI','Training Aqua AI'),subtitle:tt('Панель администратора','Admin panel'),wide:true,body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tt('Закрыть','Close'))+'</button>',onReady(root){
     root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
     root.querySelectorAll('[data-ak49-trdel]').forEach(b=>b.addEventListener('click',()=>{state.aiModels.training.splice(+b.dataset.ak49Trdel,1);saveState();closeModal();window.ak49TrainAI();}));
@@ -7908,6 +7919,9 @@ const isAdmin=(typeof akIsAdmin==='function')?akIsAdmin():false;
 .ak50-pkg{flex:1;min-width:70px;border:1px solid var(--line);border-radius:11px;background:var(--surface-strong);padding:9px 6px;cursor:pointer;text-align:center;font-weight:700;font-size:12px;transition:.12s;}
 .ak50-pkg:hover{border-color:rgba(201,148,30,.6);transform:translateY(-1px);}
 .ak50-pkg small{display:block;font-weight:600;color:var(--ink-soft);font-size:10px;margin-top:2px;}
+.ak50-block h4 svg{width:17px;height:17px;flex:none;}
+.ak50-pkg svg{width:15px;height:15px;vertical-align:-2px;}
+.ak50-fab svg{width:19px;height:19px;flex:none;}
   `;
   document.head.appendChild(st);
 })();
@@ -7920,14 +7934,14 @@ window.ak50OpenAdmin=function(){
     '<div class="ak50-star3d"><div class="ak50-star-face"></div></div>'+
     '<h3>'+escapeHtml(tt('Админ-панель AquaKotik','AquaKotik admin panel'))+'</h3>'+
     '<div class="ak50-sub">'+escapeHtml(tt('Звёзды, премиум и верификация для любого пользователя','Stars, premium and verification for any user'))+'</div>'+
-    '<div class="ak50-block"><h4>⭐ '+escapeHtml(tt('Начислить звёзды','Grant stars'))+'</h4>'+
-      '<div class="ak50-pkg-row">'+AK50_PACKAGES.map((p,i)=>'<button class="ak50-pkg" type="button" data-ak50-pkg="'+p.a+'">⭐ '+p.a.toLocaleString()+'<small>'+escapeHtml(p.n)+'</small></button>').join('')+'</div>'+
+    '<div class="ak50-block"><h4>'+icon('star')+escapeHtml(tt('Начислить звёзды','Grant stars'))+'</h4>'+
+      '<div class="ak50-pkg-row">'+AK50_PACKAGES.map((p,i)=>'<button class="ak50-pkg" type="button" data-ak50-pkg="'+p.a+'">'+icon('star')+p.a.toLocaleString()+'<small>'+escapeHtml(p.n)+'</small></button>').join('')+'</div>'+
       '<div class="ak50-row"><input id="ak50-stars-code" placeholder="'+escapeHtml(tt('Aqua-код получателя','Recipient Aqua code'))+'" maxlength="8"><input id="ak50-stars-amt" type="number" min="1" placeholder="'+escapeHtml(tt('Сумма звёзд','Amount'))+'" style="max-width:120px"></div>'+
       '<button class="primary-btn" type="button" data-ak50-issue style="width:100%">'+escapeHtml(tt('Начислить звёзды','Grant stars'))+'</button></div>'+
-    '<div class="ak50-block"><h4>👑 '+escapeHtml(tt('Подарить премиум (1 мес.)','Grant 1-month premium'))+'</h4>'+
+    '<div class="ak50-block"><h4>'+icon('crown')+escapeHtml(tt('Подарить премиум (1 мес.)','Grant 1-month premium'))+'</h4>'+
       '<div class="ak50-row"><input id="ak50-prem-code" placeholder="'+escapeHtml(tt('Aqua-код получателя','Recipient Aqua code'))+'" maxlength="8"></div>'+
       '<button class="primary-btn" type="button" data-ak50-prem style="width:100%">'+escapeHtml(tt('Выдать премиум на 1 месяц','Grant 1 month premium'))+'</button></div>'+
-    '<div class="ak50-block"><h4>✓ '+escapeHtml(tt('Верификация / бейдж','Verified badge'))+'</h4>'+
+    '<div class="ak50-block"><h4>'+icon('shield')+escapeHtml(tt('Верификация / бейдж','Verified badge'))+'</h4>'+
       '<div class="ak50-row"><input id="ak50-badge-code" placeholder="'+escapeHtml(tt('Aqua-код пользователя','User Aqua code'))+'" maxlength="8"></div>'+
       '<button class="primary-btn" type="button" data-ak50-badge style="width:100%">'+escapeHtml(tt('Выдать бейдж','Grant badge'))+'</button></div>'+
   '</div>';
@@ -7939,17 +7953,17 @@ window.ak50OpenAdmin=function(){
       const c=(root.querySelector('#ak50-stars-code').value||'').trim().toUpperCase();const a=Number(root.querySelector('#ak50-stars-amt').value||0);
       if(!c){showToast(tt('Введите Aqua-код','Enter the Aqua code'),'','info');return;}
       if(!(a>0)){showToast(tt('Введите сумму','Enter the amount'),'','info');return;}
-      akLive.post('/api/admin/stars',{code:c,amount:a}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Звёзды начислены','Stars granted'),'⭐ +'+a.toLocaleString()+' → '+c,'star');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
+      akLive.post('/api/admin/stars',{code:c,amount:a}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Звёзды начислены','Stars granted'),'+'+a.toLocaleString()+' → '+c,'star');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
     });
     root.querySelector('[data-ak50-prem]').addEventListener('click',()=>{
       const c=(root.querySelector('#ak50-prem-code').value||'').trim().toUpperCase();
       if(!c){showToast(tt('Введите Aqua-код','Enter the Aqua code'),'','info');return;}
-      akLive.post('/api/admin/premium',{code:c,months:1}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Премиум выдан','Premium granted'),'👑 1 мес. → '+c,'crown');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
+      akLive.post('/api/admin/premium',{code:c,months:1}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Премиум выдан','Premium granted'),'1 '+tt('мес.','mo.')+' → '+c,'crown');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
     });
     root.querySelector('[data-ak50-badge]').addEventListener('click',()=>{
       const c=(root.querySelector('#ak50-badge-code').value||'').trim().toUpperCase();
       if(!c){showToast(tt('Введите Aqua-код','Enter the Aqua code'),'','info');return;}
-      akLive.post('/api/admin/badge',{code:c,verified:true}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Бейдж выдан','Badge granted'),'✓ → '+c,'verified');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
+      akLive.post('/api/admin/badge',{code:c,verified:true}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Бейдж выдан','Badge granted'),'→ '+c,'verified');if(sessionAuthenticated)renderMain({preserveScroll:true});}).catch(()=>{});
     });
   }});
 };
@@ -7967,7 +7981,7 @@ if(isAdmin){
     if(!sessionAuthenticated||document.getElementById('ak50-admin-fab'))return;
     const fab=document.createElement('button');
     fab.id='ak50-admin-fab';fab.type='button';fab.className='ak50-fab';
-    fab.innerHTML='🛡️ <span>'+escapeHtml(tt('Админ','Admin'))+'</span>';
+    fab.innerHTML=icon('shield')+'<span>'+escapeHtml(tt('Админ','Admin'))+'</span>';
     fab.addEventListener('click',()=>window.ak50OpenAdmin());
     document.body.appendChild(fab);
   }
@@ -8309,6 +8323,105 @@ document.addEventListener('click',e=>{
   }
 },{capture:true});
 window.ak53CatCount=CAT_ICONS.length;
+})();
+
+/* ============================================================================
+   ak54 — Richer bot constructor: bot avatar (photo), rich text (markdown)
+   in the welcome message, and an optional image in the first post.
+   ========================================================================== */
+(function(){
+  'use strict';
+  if(typeof renderMain!=='function')return;
+  const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+
+  window.ak54Rich=function(text){
+    if(text==null)return '';
+    let h=escapeHtml(String(text));
+    h=h.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g,(m,alt,url)=>'<img class="ak54-img" src="'+url+'" alt="'+alt+'">');
+    h=h.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,(m,t2,url)=>'<a class="ak54-link" href="'+url+'" target="_blank" rel="noopener">'+t2+'</a>');
+    h=h.replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>');
+    h=h.replace(/(^|[\s(])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+    h=h.replace(/^#{1,2} (.+)$/gm,'<strong class="ak54-h">$1</strong>');
+    h=h.replace(/^- (.+)$/gm,'<span class="ak54-li">$1</span>');
+    h=h.replace(/\n/g,'<br>');
+    return h;
+  };
+
+  if(typeof openCreateBot==='function'){
+    openCreateBot=function(){
+      showModal({
+        title:tx('createBot'),
+        subtitle:tx('createBotHint'),
+        wide:true,
+        body:`<form id="bot-form" class="form-grid">
+          <div class="field full"><label>${escapeHtml(tx('botName'))}</label><input id="bot-name" required maxlength="40"></div>
+          <div class="field full"><label>${escapeHtml(tt('Аватар бота (фото)','Bot avatar (photo)'))}</label><input id="bot-avatar" type="file" accept="image/*"><div class="ak54-avatar-preview" id="bot-avatar-preview"></div></div>
+          <div class="field full"><label>${escapeHtml(tx('botDescription'))} · ${escapeHtml(tt('**жирный**, *курсив*, - список','**bold**, *italic*, - list'))}</label><textarea id="bot-description" required maxlength="500"></textarea></div>
+          <div class="field full"><label>${escapeHtml(tx('botPost'))} · ${escapeHtml(tt('первое сообщение бота','the bot first message'))}</label><textarea id="bot-post" rows="4" maxlength="1200" placeholder="${escapeHtml(tt('Привет! Я бот AquaKotik.\n**Что я умею:**\n- отвечаю быстро\n- тёплый стиль','Hi! I am the AquaKotik bot.\n**What I can do:**\n- fast replies\n- warm style'))}"></textarea></div>
+          <div class="field full"><label>${escapeHtml(tt('Фото в первом сообщении (необязательно)','Photo in the first message (optional)'))}</label><input id="bot-post-img" type="file" accept="image/*"></div>
+          <div class="field full"><label>${escapeHtml(tx('botButtons'))}</label><input id="bot-buttons" placeholder="Info, Support, Catalog"></div>
+          <div class="field"><label>${escapeHtml(tx('starsPerAction'))}</label><input id="bot-cost" type="number" min="0" max="500" value="0"></div>
+        </form>`,
+        actions:`<button class="secondary-btn" type="button" data-close-modal>${escapeHtml(tx('cancel'))}</button><button class="primary-btn" type="submit" form="bot-form">${escapeHtml(tx('createBot'))}</button>`,
+        onReady(root){
+          root.querySelectorAll('[data-close-modal]').forEach(btn=>btn.addEventListener('click',closeModal));
+          const avatarInput=root.querySelector('#bot-avatar');
+          const preview=root.querySelector('#bot-avatar-preview');
+          avatarInput.addEventListener('change',()=>{
+            const f=avatarInput.files[0];if(!f)return;
+            const r=new FileReader();r.onload=()=>{preview.innerHTML='<img class="ak54-avatar-preview-img" src="'+r.result+'" alt="">';};r.readAsDataURL(f);
+          });
+          root.querySelector('#bot-form').addEventListener('submit',event=>{
+            event.preventDefault();
+            const title=root.querySelector('#bot-name').value.trim();
+            const description=root.querySelector('#bot-description').value.trim();
+            const buttons=root.querySelector('#bot-buttons').value.split(',').map(v=>v.trim()).filter(Boolean).slice(0,6);
+            const post=root.querySelector('#bot-post').value.trim();
+            const cost=Math.max(0,Number(root.querySelector('#bot-cost').value)||0);
+            const readFile=f=>new Promise(res=>{if(!f)return res(null);const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>res(null);r.readAsDataURL(f);});
+            Promise.all([readFile(avatarInput.files[0]),readFile(root.querySelector('#bot-post-img').files[0])]).then(([avatar,postImg])=>{
+              const entity={id:makeId('bot'),type:'bot',title,description,createdAt:nowIso(),avatar:avatar||null,blocked:false,chatTheme:'ocean',unread:0};
+              state.entities.push(entity);
+              state.messages[entity.id]=(post||postImg)?[{id:makeId('message'),sender:'them',text:post||undefined,image:postImg||undefined,rich:!!(post||postImg),createdAt:nowIso()}]:[];
+              state.bots.push({id:makeId('botcfg'),entityId:entity.id,description,buttons,cost});
+              saveState();closeModal();showToast(tx('botCreated'),title,'bot');ui.tab='chats';ui.selectedId=entity.id;ui.mobileContent=true;renderMain();
+            });
+          });
+        }
+      });
+    };
+  }
+
+  if(typeof renderMessage==='function'){
+    const baseMsg=renderMessage;
+    renderMessage=function(message){
+      let html=baseMsg(message);
+      try{
+        if(message&&message.rich&&message.text){
+          const escaped=escapeHtml(message.text);
+          const rich=window.ak54Rich(message.text);
+          html=html.replace('<div class="message-text">'+escaped+'</div>','<div class="message-text ak54-rich">'+rich+'</div>');
+        }
+      }catch(e){}
+      return html;
+    };
+  }
+
+  (function css(){
+    if(document.getElementById('ak54-style'))return;
+    const st=document.createElement('style');st.id='ak54-style';
+    st.textContent=`
+.ak54-avatar-preview{margin-top:8px;}
+.ak54-avatar-preview-img{width:72px;height:72px;border-radius:50%;object-fit:cover;border:2px solid var(--line);}
+.ak54-rich{line-height:1.5;}
+.ak54-rich .ak54-h{display:block;font-size:1.05em;margin:3px 0;}
+.ak54-rich .ak54-li{display:block;padding-left:14px;position:relative;margin:1px 0;}
+.ak54-rich .ak54-li:before{content:'\\2022';position:absolute;left:2px;color:var(--accent,#34c7d5);}
+.ak54-img{max-width:220px;border-radius:12px;margin:6px 0;display:block;}
+.ak54-link{color:var(--accent,#34c7d5);text-decoration:underline;}
+    `;
+    document.head.appendChild(st);
+  })();
 })();
 
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
