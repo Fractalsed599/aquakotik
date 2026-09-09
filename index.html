@@ -8119,6 +8119,99 @@ function ak51Strip(){
 })();
 })();
 
+/* ============================================================================
+   ak52 — Profile privacy (Конфиденциальность): a settings card in the profile
+   (who sees last-seen / can message / can add to groups, show stars & gift
+   badges). Persisted locally and saved to the user node so others can read
+   it; the public profile modal hides stars/badges when the owner hides them.
+   ========================================================================== */
+(function(){
+'use strict';
+if(typeof saveState!=='function')return;
+const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+state.privacy=Object.assign({lastSeen:'contacts',message:'all',groups:'contacts',showStars:true,showBadges:true},state.privacy||{});
+(function css(){
+  if(document.getElementById('ak52-style'))return;
+  const st=document.createElement('style');st.id='ak52-style';
+  st.textContent=`
+.ak52-card{margin-top:14px;}
+.ak52-toggle{border:0;cursor:pointer;font-weight:700;font-size:12px;padding:7px 13px;border-radius:20px;background:rgba(11,153,170,.14);color:#0b99aa;transition:.12s;white-space:nowrap;}
+.ak52-toggle.off{background:var(--surface-strong);color:var(--ink-soft);}
+  `;
+  document.head.appendChild(st);
+})();
+function ak52Card(){
+  const p=state.privacy||{};
+  const opt=(key,val,label)=>'<option value="'+val+'" '+((p[key]||'')===val?'selected':'')+'>'+escapeHtml(label)+'</option>';
+  const sel=(key,opts)=>'<select data-ak52="'+key+'" style="max-width:170px">'+opts.map(o=>opt(key,o[0],o[1])).join('')+'</select>';
+  const tog=(key,on,label)=>'<button class="ak52-toggle '+(on?'':'off')+'" type="button" data-ak52toggle="'+key+'">'+escapeHtml(on?tt('Вкл','On'):tt('Выкл','Off'))+' · '+escapeHtml(label)+'</button>';
+  const opts=[['all',tt('Всем','Everyone')],['contacts',tt('Мои контакты','My contacts')],['none',tt('Никому','Nobody')]];
+  return '<section id="ak52-privacy-card" class="panel-card ak43-card ak52-card"><div class="price-title"><span class="setting-icon">🔒</span><div><h3>'+escapeHtml(tt('Конфиденциальность','Privacy'))+'</h3><p>'+escapeHtml(tt('Кто видит ваш профиль, звёзды и подарки','Who can see your profile, stars and gifts'))+'</p></div></div><div class="settings-list">'+
+    '<div class="setting-row"><span class="setting-icon">👁️</span><span class="setting-copy"><strong>'+escapeHtml(tt('Был(а) в сети','Last seen'))+'</strong><span>'+escapeHtml(tt('Кто видит время вашего захода','Who sees your last activity'))+'</span></span>'+sel('lastSeen',opts)+'</div>'+
+    '<div class="setting-row"><span class="setting-icon">💬</span><span class="setting-copy"><strong>'+escapeHtml(tt('Кто может писать','Who can message me'))+'</strong><span>'+escapeHtml(tt('Ограничьте входящие сообщения','Limit incoming messages'))+'</span></span>'+sel('message',opts)+'</div>'+
+    '<div class="setting-row"><span class="setting-icon">👥</span><span class="setting-copy"><strong>'+escapeHtml(tt('Добавление в группы','Add to groups'))+'</strong><span></span></span>'+sel('groups',opts)+'</div>'+
+    '<div class="setting-row"><span class="setting-icon">⭐</span><span class="setting-copy"><strong>'+escapeHtml(tt('Баланс звёзд в профиле','Star balance in profile'))+'</strong><span>'+escapeHtml(tt('Показывать или скрывать','Show or hide'))+'</span></span>'+tog('showStars',p.showStars!==false,tt('показ','show'))+'</div>'+
+    '<div class="setting-row"><span class="setting-icon">🎁</span><span class="setting-copy"><strong>'+escapeHtml(tt('Бейджи подарков','Gift badges'))+'</strong><span>'+escapeHtml(tt('Анимированные смайлики у профиля','Animated emojis by the profile'))+'</span></span>'+tog('showBadges',p.showBadges!==false,tt('показ','show'))+'</div>'+
+  '</div></section>';
+}
+function ak52Save(next){
+  state.privacy=Object.assign(state.privacy||{},next);
+  saveState();
+  try{akLive.post('/api/privacy',{settings:state.privacy}).catch(()=>{});}catch(e){}
+}
+window.ak52Card=ak52Card;
+(function post(){
+  const baseRM=(typeof renderMain==='function')?renderMain:null;
+  if(baseRM){
+    renderMain=function(options){
+      const r=baseRM(options);
+      try{ak52Inject();}catch(e){}
+      return r;
+    };
+  }
+  function ak52Inject(){
+    if(!sessionAuthenticated)return;
+    const col=document.querySelector('.profile-dashboard .profile-column')||document.querySelector('.profile-dashboard');
+    if(!col)return;
+    const old=document.getElementById('ak52-privacy-card');if(old)old.remove();
+    col.insertAdjacentHTML('beforeend',ak52Card());
+  }
+})();
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(!el||!el.dataset||!el.dataset.ak52)return;
+  ak52Save({[el.dataset.ak52]:el.value});
+  if(sessionAuthenticated)renderMain({preserveScroll:true});
+},{capture:true});
+document.addEventListener('click',e=>{
+  const el=e.target&&e.target.closest?e.target.closest('[data-ak52toggle]'):null;
+  if(!el)return;
+  const key=el.dataset.ak52toggle;
+  ak52Save({[key]:!(state.privacy[key]!==false)});
+  if(sessionAuthenticated)renderMain({preserveScroll:true});
+},{capture:true});
+function ak52ApplyPrivacy(code){
+  const priv=(code===akLiveCode())?(state.privacy||{}):(((state.liveUsers||{})[code]||{}).privacy);
+  if(!priv)return;
+  const root=document.querySelector('.ak48-profile');
+  if(!root)return;
+  if(priv.showStars===false){
+    root.querySelectorAll('.ak48-p-row').forEach(r=>{if(r.textContent.indexOf('⭐')>=0||/баланс|balance/i.test(r.textContent))r.style.display='none';});
+  }
+  if(priv.showBadges===false){
+    root.querySelectorAll('.ak48-badge').forEach(b=>b.style.display='none');
+  }
+}
+const baseAk48Profile=window.ak48OpenUserProfile;
+if(baseAk48Profile){
+  window.ak48OpenUserProfile=function(code){
+    const r=baseAk48Profile(code);
+    try{ak52ApplyPrivacy(code);}catch(e){}
+    return r;
+  };
+}
+})();
+
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
 
   </script>
