@@ -5723,27 +5723,28 @@ sendCurrentMessage=function(){
         showToast(t('Сейчас закрыто','Closed now'),t(`${rec.name||entity.title} — писать можно с ${s.until}`,(rec.name||entity.title)+' — open from '+s.until),'block');
         return;
       }
-    }else if(rec&&rec.starsOnly&&state.stars!=null&&Number(state.stars)>=5){
+    }else if(rec&&rec.starsOnly&&state.stars!=null&&Number(state.stars)>=(Number(rec.messagePrice)||5)){
       ak43ConfirmStarsFee(entity,rec);
       return;
     }else if(rec&&rec.starsOnly){
-      showToast(t('Сообщение за звёзды','Message for stars'),t(`${rec.name||entity.title} принимает сообщения только за 5⭐. У вас не хватает звёзд — попросите админа пополнить баланс.`,(rec.name||entity.title)+' only accepts messages for 5 stars. Ask the admin for a top-up.'),'block');
+      showToast(t('Сообщение за звёзды','Message for stars'),t(`${rec.name||entity.title} принимает сообщения только за ${(Number(rec.messagePrice)||5)}⭐. У вас не хватает звёзд — попросите админа пополнить баланс.`,(rec.name||entity.title)+' only accepts messages for '+(Number(rec.messagePrice)||5)+' stars. Ask the admin for a top-up.'),'block');
       return;
     }
   }
   return akBaseSend43.call(this);
 };
 function ak43ConfirmStarsFee(entity,rec){
+  const price=Number(rec.messagePrice)||5;
   showModal({
     title:t('Платное сообщение','Paid message'),
     subtitle:t(`${rec.name||entity.title} принимает сообщения только за звёзды`,(rec.name||entity.title)+' only accepts messages for stars'),
-    body:`<div class="info-banner">⭐<span>${t('Стоимость: 5⭐ · Ваш баланс: '+Number(state.stars||0)+'⭐','Cost: 5 stars · Balance: '+Number(state.stars||0)+'')}</span></div>`,
-    actions:`<button class="secondary-btn" type="button" data-ak43-close>${t('Отмена','Cancel')}</button><button class="primary-btn" type="button" data-ak43-stars-confirm="${entity.id}">⭐ ${t('Отправить за 5⭐','Send for 5 stars')}</button>`,
+    body:`<div class="info-banner">⭐<span>${t('Стоимость: '+price+'⭐ · Ваш баланс: '+Number(state.stars||0)+'⭐','Cost: '+price+' stars · Balance: '+Number(state.stars||0)+'')}</span></div>`,
+    actions:`<button class="secondary-btn" type="button" data-ak43-close>${t('Отмена','Cancel')}</button><button class="primary-btn" type="button" data-ak43-stars-confirm="${entity.id}">⭐ ${t('Отправить за '+price+'⭐','Send for '+price+' stars')}</button>`,
     onReady(root){
       root.querySelector('[data-ak43-close]')?.addEventListener('click',closeModal);
       root.querySelector('[data-ak43-stars-confirm]')?.addEventListener('click',()=>{
         closeModal();
-        window.__ak43StarsPaid=true;
+        window.__ak43StarsPaid=price;
         akBaseSend43.call(window);
       });
     }
@@ -5752,7 +5753,7 @@ function ak43ConfirmStarsFee(entity,rec){
 const akBasePost43=akLive.post;
 akLive.post=function(path,payload){
   if(path==='/api/message'&&window.__ak43StarsPaid){
-    payload=Object.assign({},payload,{starsPaid:5});
+    payload=Object.assign({},payload,{starsPaid:window.__ak43StarsPaid});
     window.__ak43StarsPaid=false;
     state.stars=Math.max(0,Number(state.stars||0)-5);
     saveState();
@@ -6159,9 +6160,10 @@ function ak43ProfileCards(){
         <label class="switch"><input id="ak43-sched-on" type="checkbox" ${sched.enabled?'checked':''} ${premium?'':'disabled'}><span class="switch-track"></span></label>
       </div>
       ${sched.enabled?`<div class="ak43-sched-times"><input id="ak43-sched-from" type="time" value="${escapeHtml(sched.from)}" ${premium?'':'disabled'}><span>${t('до','to')}</span><input id="ak43-sched-to" type="time" value="${escapeHtml(sched.to)}" ${premium?'':'disabled'}></div>`:''}
-      <div class="setting-row"><span class="setting-icon">⭐</span><span class="setting-copy"><strong>${t('Писать можно только за звёзды','Messages only for stars')}</strong><span>${premium?t('Входящие сообщения — 5⭐ вам','Incoming messages cost 5 stars (yours)'):t('Доступно с Premium','Premium only')}</span></span>
+      <div class="setting-row"><span class="setting-icon">⭐</span><span class="setting-copy"><strong>${t('Писать можно только за звёзды','Messages only for stars')}</strong><span>${premium?(me.starsOnly?t('Входящие сообщения — '+(Number(me.messagePrice)||5)+'⭐ вам','Incoming messages cost '+(Number(me.messagePrice)||5)+' stars (yours)'):t('Выключено','Off')):t('Доступно с Premium','Premium only')}</span></span>
         <label class="switch"><input id="ak43-starsonly" type="checkbox" ${me.starsOnly?'checked':''} ${premium?'':'disabled'}><span class="switch-track"></span></label>
       </div>
+      ${me.starsOnly?`<div class="setting-row"><span class="setting-icon">💰</span><span class="setting-copy"><strong>${t('Цена сообщения','Message price')}</strong><span>${t('Сколько звёзд платят за входящее сообщение','Stars per incoming message')}</span></span><select id="ak43-msgprice">${[1,5,10,25,50,100].map(n=>`<option value="${n}" ${(Number(me.messagePrice)||5)===n?'selected':''}>${n}⭐</option>`).join('')}</select></div>`:''}
       <div class="setting-row"><span class="setting-icon">👥</span><span class="setting-copy"><strong>${t('Контакты','Contacts')}</strong><span>${premium?t('Безлимита','Unlimited'):'5 '+t('бесплатно · больше — Premium','free · more with Premium')}</span></span></div>
     </div>
   </section>
@@ -6198,7 +6200,7 @@ renderChatPane=function(entity){
         const s=ak43ScheduleState(rec.schedule);
         extra+=s.open?`<i class="ak43-head-badge ak43-head-open" title="${t('Открыт до '+s.until,'Open until '+s.until)}">${t('открыт до','open until')} ${s.until}</i>`:`<i class="ak43-head-badge ak43-head-closed" title="${t('Закрыто до '+s.until,'Closed until '+s.until)}">${t('закрыто до','closed until')} ${s.until}</i>`;
       }
-      if(rec.starsOnly)extra+=`<i class="ak43-head-badge ak43-head-stars" title="${t('Сообщения за 5⭐','Messages for 5 stars')}">⭐ 5</i>`;
+      if(rec.starsOnly)extra+=`<i class="ak43-head-badge ak43-head-stars" title="${t('Сообщения за '+(Number(rec.messagePrice)||5)+'⭐','Messages for '+(Number(rec.messagePrice)||5)+' stars')}">⭐ ${(Number(rec.messagePrice)||5)}</i>`;
       if(rec.gender==='male')extra+=`<i class="ak43-gender-chip">♂</i>`;
       if(rec.gender==='female')extra+=`<i class="ak43-gender-chip">♀</i>`;
     }
@@ -6321,7 +6323,13 @@ if(!ak43DelegateBound){
     }
     if(el.id==='ak43-starsonly'){
       ak43SyncUser({starsOnly:el.checked});
-      showToast(el.checked?t('Сообщения теперь за 5⭐','Messages now cost 5 stars'):t('Бесплатные сообщения включены','Free messages enabled'),'star');
+      showToast(el.checked?t('Сообщения теперь за звёзды — выберите цену','Messages now cost stars — choose the price'):t('Бесплатные сообщения включены','Free messages enabled'),'star');
+      renderMain();
+      return;
+    }
+    if(el.id==='ak43-msgprice'){
+      ak43SyncUser({messagePrice:Number(el.value),starsOnly:true});
+      showToast(t('Цена: '+el.value+'⭐ за входящее сообщение','Price: '+el.value+' stars per incoming message'),'star');
       renderMain();
     }
   },true);
