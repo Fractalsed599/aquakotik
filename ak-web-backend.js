@@ -331,10 +331,28 @@
             return resp({ error: 'unknown admin path' }, 404);
           }
 
-          // star gift (transfer stars + a gift message)
+          // gifts: stars (transfer) | emoji (sender pays, recipient gets the emoji) | premium (sender pays, recipient gets 1 month)
           if (seg1 === 'gift') {
             var from = code, to = body.toCode, amt = Number(body.amount || 0);
             var giftType = body.giftType || 'stars', giftId = body.giftId || null;
+            if (giftType === 'emoji') {
+              return ref('users/' + from + '/stars').transaction(function (cur) { if ((cur || 0) < amt) throw new Error('no'); return cur - amt; })
+                .then(function () {
+                  return ref('users/' + to + '/collectibles').once('value').then(function (s) {
+                    var col = s.val() || {};
+                    if (!col[giftId]) col[giftId] = { id: giftId, gotAt: nowIso(), from: from, gifted: true };
+                    return ref('users/' + to + '/collectibles').set(col).then(function () { return ok({ owned: true }); });
+                  });
+                }, function () { return resp({ error: 'not-enough-stars' }, 409); });
+            }
+            if (giftType === 'premium') {
+              return ref('users/' + from + '/stars').transaction(function (cur) { if ((cur || 0) < amt) throw new Error('no'); return cur - amt; })
+                .then(function () {
+                  var until = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+                  return userNode(to, { premium: true, premiumUntil: until }).then(function (u) { return saveUser(to, u).then(function () { return ok({ premium: true }); }); });
+                }, function () { return resp({ error: 'not-enough-stars' }, 409); });
+            }
+            // default: stars transfer
             return ref('users/' + from + '/stars').transaction(function (cur) { return Math.max(0, (cur || 0) - amt); })
               .then(function () {
                 if (amt > 0) return ref('users/' + to + '/stars').transaction(function (cur) { return (cur || 0) + amt; });
@@ -343,14 +361,7 @@
               .then(function () {
                 var gEntity = body.entityId || ('gift:' + to);
                 var gKey = ref('messages/' + gEntity).push().key;
-                var gm = { id: gKey, fromCode: from, toCode: to, entityId: gEntity, text: body.text || ('gift:' + amt), createdAt: nowIso(), gift: amt, giftType: giftType, giftId: giftId };
-                if (giftType === 'emoji' && giftId) {
-                  return ref('users/' + to + '/collectibles').once('value').then(function (s) {
-                    var col = s.val() || {};
-                    if (!col[giftId]) col[giftId] = { id: giftId, gotAt: nowIso(), from: from };
-                    return ref('users/' + to + '/collectibles').set(col).then(function () { return ok(); });
-                  });
-                }
+                var gm = { id: gKey, fromCode: from, toCode: to, entityId: gEntity, text: body.text || ('gift:' + amt), createdAt: nowIso(), gift: amt, giftType: 'stars' };
                 return ref('messages/' + gEntity + '/' + gKey).set(gm).then(function () { return ok(); });
               });
           }
