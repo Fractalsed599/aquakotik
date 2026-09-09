@@ -7505,6 +7505,184 @@ function ak47PostProcess(){
 }
 })();
 
+/* ============================================================================
+   ak48 — gift economy: animated emoji gifts (keep/sell/equip, up to 6 badges
+   by the profile), premium gifts, and a public "view any user's profile".
+   ========================================================================== */
+(function(){
+'use strict';
+if(typeof akLiveCode!=='function')return;
+const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+(function css(){
+  if(document.getElementById('ak48-style'))return;
+  const st=document.createElement('style');st.id='ak48-style';
+  st.textContent=`
+.ak48-badge{display:inline-grid;place-items:center;width:24px;height:24px;margin-left:3px;font-size:16px;line-height:1;vertical-align:-4px;}
+.ak48-b1{animation:ak48-pulse 1.6s ease-in-out infinite;}
+.ak48-b2{animation:ak48-bounce 1.1s ease-in-out infinite;}
+.ak48-b3{animation:ak48-glow 2s ease-in-out infinite;}
+@keyframes ak48-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.28)}}
+@keyframes ak48-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes ak48-glow{0%,100%{filter:drop-shadow(0 0 0 rgba(255,200,0,0))}50%{filter:drop-shadow(0 0 7px rgba(255,200,0,.95))}}
+.ak48-gift-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;}
+.ak48-gift-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 8px;border:1px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer;transition:.15s;}
+.ak48-gift-card:hover{border-color:rgba(201,148,30,.6);transform:translateY(-2px);}
+.ak48-gift-card:disabled{opacity:.5;cursor:not-allowed;}
+.ak48-gift-e{font-size:30px;line-height:1;}
+.ak48-gift-n{font-weight:700;font-size:12px;}
+.ak48-gift-p{font-size:11px;color:var(--ink-soft);}
+.ak48-gift-premium{background:linear-gradient(160deg,rgba(255,220,120,.25),var(--surface));border-color:rgba(201,148,30,.5);}
+.ak48-profile{text-align:center;padding:4px 2px;}
+.ak48-p-name{font-size:18px;font-weight:800;margin-top:8px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;}
+.ak48-p-code{color:var(--ink-soft);font-size:12px;margin-top:2px;}
+.ak48-pills{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:10px 0;}
+.ak48-pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--surface-strong);}
+.ak48-pill-admin{color:#0aa06e;background:rgba(10,160,110,.15);}
+.ak48-pill-verified{color:#2f6bff;background:rgba(47,107,255,.13);}
+.ak48-pill-premium{color:#b57400;background:rgba(255,190,40,.2);}
+.ak48-p-row{display:flex;justify-content:space-between;padding:9px 4px;border-top:1px solid var(--line);font-size:13px;}
+.ak48-p-gifts{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;padding:10px 4px 4px;min-height:34px;}
+.ak48-own{font-size:24px;cursor:pointer;line-height:1;}
+.ak48-own:hover{transform:scale(1.2);}
+.ak48-modal-actions{display:flex;gap:10px;justify-content:center;margin-top:14px;}
+  `;
+  document.head.appendChild(st);
+})();
+
+const AK48_GIFTS={
+  fire:{e:'🔥',n:'Огонь',p:50,a:'ak48-b1'},
+  heart:{e:'💖',n:'Любовь',p:80,a:'ak48-b2'},
+  star:{e:'⭐',n:'Звезда',p:100,a:'ak48-b3'},
+  crown:{e:'👑',n:'Корона',p:150,a:'ak48-b1'},
+  rocket:{e:'🚀',n:'Ракета',p:200,a:'ak48-b2'},
+  gem:{e:'💎',n:'Алмаз',p:250,a:'ak48-b3'},
+  magic:{e:'✨',n:'Волшебство',p:300,a:'ak48-b1'},
+  rainbow:{e:'🌈',n:'Радуга',p:300,a:'ak48-b2'},
+  party:{e:'🎉',n:'Праздник',p:350,a:'ak48-b3'},
+  dragon:{e:'🐉',n:'Дракон',p:400,a:'ak48-b1'}
+};
+const AK48_PREMIUM=1000;
+function myCode(){try{return akLiveCode();}catch(e){return (state.account&&state.account.aquaCode)||'';}}
+function rec(code){return (state.liveUsers||{})[code]||null;}
+function myRec(){const a=state.account||{};return Object.assign({},a,{code:myCode(),stars:state.stars,premium:!!state.premium,verified:!!(state.verified&&state.verified.purchased&&state.verified.enabled)});}
+function getRec(code){return code===myCode()?myRec():rec(code);}
+function ownedIds(u){return u&&u.collectibles?Object.keys(u.collectibles):[];}
+function equippedIds(u){let ids=(u&&u.equippedEmojis&&u.equippedEmojis.length)?u.equippedEmojis:ownedIds(u);return ids.slice(0,6);}
+window.ak48GiftBadges=function(code){
+  const u=getRec(code);if(!u)return '';
+  return equippedIds(u).map(id=>{const g=AK48_GIFTS[id];return g?'<span class="ak48-badge '+g.a+'" title="'+escapeHtml(g.n)+'">'+g.e+'</span>':'';}).join('');
+};
+
+/* ---- public profile (view any user) ---- */
+window.ak48OpenUserProfile=function(code){
+  code=String(code||'').toUpperCase();if(!code)return;
+  const isMe=code===myCode();const u=getRec(code);
+  if(!u){showToast(tt('Пользователь не найден','User not found'),'','block');return;}
+  const isAdmin=u.email&&String(u.email).toLowerCase()==='irontim88@gmail.com';
+  const stars=Number(u.stars||0);const owned=ownedIds(u);
+  const pills=[];
+  if(isAdmin)pills.push('<span class="ak48-pill ak48-pill-admin">'+icon('shield')+' '+escapeHtml(tt('Администратор','Admin'))+'</span>');
+  if(u.verified)pills.push('<span class="ak48-pill ak48-pill-verified">✓ '+escapeHtml(tt('Подтверждён','Verified'))+'</span>');
+  if(u.premium)pills.push('<span class="ak48-pill ak48-pill-premium">'+icon('crown')+' '+escapeHtml(tt('Премиум','Premium'))+'</span>');
+  const ownedHtml=owned.length?owned.map(id=>{const g=AK48_GIFTS[id];return g?'<span class="ak48-own" data-ak48-own="'+id+'" title="'+escapeHtml(g.n)+'">'+g.e+'</span>':'';}).join(''):'<span style="color:var(--ink-soft);font-size:12px">'+escapeHtml(tt('Пока нет подарков','No gifts yet'))+'</span>';
+  const actions=isMe
+    ?'<div class="ak48-modal-actions"><button class="secondary-btn" type="button" id="ak48-manage">'+icon('sliders')+' '+escapeHtml(tt('Настроить подарки','Manage gifts'))+'</button><button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tx('cancel'))+'</button></div>'
+    :'<div class="ak48-modal-actions"><button class="primary-btn" type="button" id="ak48-giftbtn">'+icon('gift')+' '+escapeHtml(tt('Подарить','Gift'))+'</button><button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tx('cancel'))+'</button></div>';
+  const body='<div class="ak48-profile">'+avatarMarkup({title:u.name||code,avatar:u.avatar},'profile-avatar')+'<div class="ak48-p-name">'+escapeHtml(u.name||code)+window.ak47BadgeForCode(code)+window.ak48GiftBadges(code)+'</div><div class="ak48-p-code">'+escapeHtml(tt('Aqua-код','Aqua code'))+': <b>'+escapeHtml(code)+'</b></div><div class="ak48-pills">'+(pills.join('')||'<span style="color:var(--ink-soft);font-size:12px">'+escapeHtml(tt('Обычный пользователь','Regular user'))+'</span>')+'</div><div class="ak48-p-row"><span>'+icon('star')+' '+escapeHtml(tt('Баланс','Balance'))+'</span><b>'+stars.toLocaleString()+' ⭐</b></div><div class="ak48-p-row"><span>'+icon('gift')+' '+escapeHtml(tt('Подарки','Gifts'))+'</span><b>'+owned.length+'</b></div><div class="ak48-p-gifts">'+ownedHtml+'</div></div>'+actions;
+  showModal({title:u.name||code,subtitle:tt('Профиль пользователя','User profile'),body:body,onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    const gb=root.querySelector('#ak48-giftbtn');
+    if(gb)gb.addEventListener('click',()=>{const ent=getEntity(ui.selectedId);const target={contactCode:code,title:u.name||code};closeModal();window.ak48OpenGiftModal(ent&&ent.contactCode===code?ent:target);});
+    const mg=root.querySelector('#ak48-manage');
+    if(mg)mg.addEventListener('click',()=>{closeModal();window.ak48ManageMyGifts();});
+    root.querySelectorAll('[data-ak48-own]').forEach(el=>el.addEventListener('click',ev=>{ev.stopPropagation();if(!isMe)return;const id=el.dataset.ak48Own;window.ak48ToggleEquip(id);renderMain({preserveScroll:true});}));
+  }});
+};
+
+/* ---- gift shop (stars + emojis + premium) ---- */
+window.ak48OpenGiftModal=function(entity){
+  if(!entity||!entity.contactCode){showToast(tt('Выберите контакт','Choose a contact'),'','block');return;}
+  const toCode=entity.contactCode,toName=entity.title||toCode;
+  const balance=Number(state.stars||0);
+  const starsRow=[10,25,50,100].map(n=>'<button class="ak48-gift-card" type="button" data-ak48-stars="'+n+'"><span class="ak48-gift-e">⭐</span><span class="ak48-gift-n">'+n+'</span><span class="ak48-gift-p">'+escapeHtml(tt('звёзды','stars'))+'</span></button>').join('');
+  const emojiGrid=Object.keys(AK48_GIFTS).map(id=>{const g=AK48_GIFTS[id];return '<button class="ak48-gift-card" type="button" data-ak48-emoji="'+id+'" data-ak48-price="'+g.p+'"><span class="ak48-gift-e '+g.a+'">'+g.e+'</span><span class="ak48-gift-n">'+escapeHtml(g.n)+'</span><span class="ak48-gift-p">⭐ '+g.p+'</span></button>';}).join('');
+  const premiumCard='<button class="ak48-gift-card ak48-gift-premium" type="button" data-ak48-premium="1"><span class="ak48-gift-e ak48-b1">👑</span><span class="ak48-gift-n">'+escapeHtml(tt('Премиум · 1 мес.','Premium · 1 month'))+'</span><span class="ak48-gift-p">⭐ '+AK48_PREMIUM+'</span></button>';
+  const body='<p style="margin:0 0 12px;color:var(--ink-soft);font-size:12.5px">'+escapeHtml(tt('Звёзды и премиум уходят получателю. Анимационные смайлики получатель сохранит себе и сможет повесить до 6 у профиля.','Stars and premium go to the recipient. Animated emojis are kept by the recipient and can be hung (up to 6) by the profile.'))+'</p><div class="ak48-gift-grid">'+starsRow+emojiGrid+premiumCard+'</div>';
+  showModal({title:tt('Подарок','Gift'),subtitle:tx('balance')+': '+balance+'⭐ → '+escapeHtml(toName),body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tx('cancel'))+'</button>',onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    root.querySelectorAll('[data-ak48-stars]').forEach(b=>b.addEventListener('click',()=>{
+      const n=Number(b.dataset.ak48Stars);if(n>balance){showToast(tx('notEnoughStars'),'','star');return;}
+      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:n,giftType:'stars'}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Подарок отправлен ✓','Gift sent ✓'),'⭐ '+n+' → '+toName,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+    }));
+    root.querySelectorAll('[data-ak48-emoji]').forEach(b=>b.addEventListener('click',()=>{
+      const id=b.dataset.ak48Emoji,g=AK48_GIFTS[id];if(!g)return;if(g.p>balance){showToast(tx('notEnoughStars'),'','star');return;}
+      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:g.p,giftType:'emoji',giftId:id}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Подарок отправлен ✓','Gift sent ✓'),g.e+' '+g.n+' → '+toName,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+    }));
+    const pm=root.querySelector('[data-ak48-premium]');
+    if(pm)pm.addEventListener('click',()=>{
+      if(AK48_PREMIUM>balance){showToast(tx('notEnoughStars'),'','star');return;}
+      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:AK48_PREMIUM,giftType:'premium'}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Премиум подарен ✓','Premium gifted ✓'),'👑 → '+toName,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+    });
+  }});
+};
+
+/* ---- manage my own gifts (equip / sell) ---- */
+window.ak48ToggleEquip=function(id){
+  const u=myRec();const eq=equippedIds(u);const i=eq.indexOf(id);
+  const next=(i>=0?eq.slice(0,i).concat(eq.slice(i+1)):eq.concat(id)).slice(0,6);
+  akLive.post('/api/collectible',{action:'equip',equipped:next}).then(()=>{showToast(next.indexOf(id)>=0?tt('Подарок повешен у профиля','Badge equipped by profile'):tt('Снято с профиля','Removed from profile'),'','check');renderMain({preserveScroll:true});}).catch(()=>{});
+};
+window.ak48ManageMyGifts=function(){
+  const u=myRec();const owned=ownedIds(u);const eq=equippedIds(u);
+  if(!owned.length){showModal({title:tt('Мои подарки','My gifts'),body:'<p style="text-align:center;color:var(--ink-soft)">'+escapeHtml(tt('У вас пока нет подарков. Подарите или купите анимационный смайлик!','You have no gifts yet. Get or buy an animated emoji!'))+'</p>',actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tx('ok'))+'</button>',onReady(r){r.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));}});return;}
+  const cards=owned.map(id=>{const g=AK48_GIFTS[id];if(!g)return '';const on=eq.indexOf(id)>=0;return '<div class="ak48-gift-card" style="cursor:default"><span class="ak48-gift-e '+g.a+'">'+g.e+'</span><span class="ak48-gift-n">'+escapeHtml(g.n)+'</span><div style="display:flex;gap:6px;margin-top:4px"><button class="small-btn" type="button" data-ak48-eq="'+id+'" data-on="'+(on?'1':'0')+'">'+escapeHtml(on?tt('Снять','Remove'):tt('Повесить','Equip'))+'</button><button class="small-btn" type="button" data-ak48-sell="'+id+'" data-price="'+g.p+'">'+escapeHtml(tt('Продать','Sell'))+' ⭐'+g.p+'</button></div></div>';}).join('');
+  showModal({title:tt('Мои подарки','My gifts'),subtitle:tt('До 6 бейджей у профиля','Up to 6 badges by the profile'),body:'<div class="ak48-gift-grid">'+cards+'</div>',actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tx('close'))+'</button>',onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    root.querySelectorAll('[data-ak48-eq]').forEach(b=>b.addEventListener('click',()=>{window.ak48ToggleEquip(b.dataset.ak48Eq);}));
+    root.querySelectorAll('[data-ak48-sell]').forEach(b=>b.addEventListener('click',()=>{
+      const id=b.dataset.ak48Sell,price=Number(b.dataset.price);
+      akLive.post('/api/collectible',{action:'sell',id:id,price:price}).then(res=>{if(res&&res.ok===false)return;closeModal();showToast(tt('Продано','Sold'),'⭐ +'+price,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+    }));
+  }});
+};
+
+/* ---- chat menu: "Profile" item + richer "gift" interception ---- */
+const baseRenderChatMenu=renderChatMenu;
+renderChatMenu=function(entity){
+  let html=baseRenderChatMenu(entity);
+  if(entity&&entity.contactCode&&!entity.bot){
+    const prof='<button class="menu-item" type="button" data-chat-action="profile48">'+icon('user')+'<span>'+escapeHtml(tt('Профиль','Profile'))+'</span></button>';
+    html=html.replace(/<\/div>\s*$/,prof+'</div>');
+  }
+  return html;
+};
+document.addEventListener('click',e=>{
+  const t=e.target&&e.target.closest;
+  const pb=t?e.target.closest('[data-chat-action="profile48"]'):null;
+  if(pb){e.stopPropagation();const ent=getEntity(ui.selectedId);if(ent&&ent.contactCode)window.ak48OpenUserProfile(ent.contactCode);return;}
+  const gb=t?e.target.closest('[data-chat-action="gift"]'):null;
+  if(gb){const ent=getEntity(ui.selectedId);if(ent&&ent.contactCode&&!ent.bot){e.stopPropagation();window.ak48OpenGiftModal(ent);}}
+},true);
+
+/* ---- renderMain post-process: gift badges by profile (chat head + sidebar brand) ---- */
+const baseRenderMain=renderMain;
+renderMain=function(options){
+  const r=baseRenderMain(options);
+  try{ak48PostProcess();}catch(e){}
+  return r;
+};
+function ak48PostProcess(){
+  try{
+    const strong=document.querySelector('.chat-title strong');
+    if(strong){const ent=getEntity(ui.selectedId);if(ent&&ent.contactCode&&!ent.bot){const b=window.ak48GiftBadges(ent.contactCode);if(b&&!strong.querySelector('.ak48-badge'))strong.insertAdjacentHTML('beforeend',b);}}
+  }catch(e){}
+  try{
+    const brand=document.querySelector('.sidebar-head .account-line');
+    if(brand){const b=window.ak48GiftBadges(myCode());if(b&&!brand.querySelector('.ak48-badge'))brand.insertAdjacentHTML('beforeend',b);}
+  }catch(e){}
+}
+})();
+
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
 
   </script>
