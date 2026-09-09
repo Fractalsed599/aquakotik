@@ -231,7 +231,18 @@
             if (body.poll) msg.poll = body.poll;
             if (body.gift) msg.gift = body.gift;
             if (body.kind) msg.kind = body.kind;
-            return when(ref('messages/' + entityId + '/' + key).set(msg), function () { return ok({ id: key }); });
+            var mfrom = body.fromCode || code, mto = body.toCode, mpaid = Number(body.starsPaid || 0);
+            return ref('messages/' + entityId + '/' + key).set(msg).then(function () {
+              if (mpaid > 0 && mto) {
+                return ref('users/' + mto + '/starsOnly').once('value').then(function (s) {
+                  if (!s.val()) return ok({ id: key });
+                  return ref('users/' + mfrom + '/stars').transaction(function (cur) { return Math.max(0, (cur || 0) - mpaid); })
+                    .then(function () { return ref('users/' + mto + '/stars').transaction(function (cur) { return (cur || 0) + mpaid; }); })
+                    .then(function () { return ok({ id: key, paid: mpaid }); });
+                });
+              }
+              return ok({ id: key });
+            });
           }
 
           // create a 1-on-1 contact link
