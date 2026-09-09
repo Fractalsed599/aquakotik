@@ -7978,6 +7978,147 @@ if(isAdmin){
 }
 })();
 
+/* ============================================================================
+   ak51 — Statuses / stories: a contacts strip at the top of the chat list, a
+   full-screen viewer (text/photo + like), a create-status modal, and a
+   background refresh (reads `statuses/{code}` via the adapter's list action).
+   ========================================================================== */
+(function(){
+'use strict';
+if(typeof saveState!=='function')return;
+const tt=(ru,en)=>((typeof state!=='undefined'&&state&&state.language!=='ru')?en:ru);
+state.statusesCache=state.statusesCache||{};
+(function css(){
+  if(document.getElementById('ak51-style'))return;
+  const st=document.createElement('style');st.id='ak51-style';
+  st.textContent=`
+.ak51-strip{display:flex;gap:11px;overflow-x:auto;padding:11px 13px 9px;border-bottom:1px solid var(--line);scrollbar-width:thin;}
+.ak51-strip::-webkit-scrollbar{height:5px;}
+.ak51-strip::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+.ak51-st{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:62px;border:0;background:transparent;cursor:pointer;padding:2px;}
+.ak51-st-ring{width:52px;height:52px;border-radius:50%;padding:2.5px;background:conic-gradient(from 210deg,#0b99aa,#7663d6,#0b99aa);display:flex;align-items:center;justify-content:center;}
+.ak51-st-new{background:var(--surface-strong);}
+.ak51-st-ring img,.ak51-st-ring .avatar-fallback{width:100%;height:100%;border-radius:50%;border:2px solid var(--surface);}
+.ak51-st-name{font-size:10.5px;font-weight:600;color:var(--ink-soft);max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ak51-viewer{position:fixed;inset:0;z-index:2000;background:linear-gradient(160deg,rgba(6,18,24,.97),rgba(10,14,26,.98));display:flex;flex-direction:column;animation:ak51-fade .18s ease;}
+@keyframes ak51-fade{from{opacity:0}to{opacity:1}}
+.ak51-viewer-top{display:flex;align-items:center;gap:10px;padding:14px 16px;}
+.ak51-viewer-progress{flex:1;height:3px;background:rgba(255,255,255,.18);border-radius:3px;overflow:hidden;}
+.ak51-viewer-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#0b99aa,#7663d6);animation:ak51-prog 5s linear forwards;}
+@keyframes ak51-prog{from{width:0}to{width:100%}}
+.ak51-viewer-head{display:flex;align-items:center;gap:9px;color:#fff;font-size:13px;font-weight:700;}
+.ak51-viewer-head img{width:34px;height:34px;border-radius:50%;}
+.ak51-viewer-time{color:rgba(255,255,255,.55);font-size:11px;font-weight:600;}
+.ak51-viewer-close{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:16px;cursor:pointer;}
+.ak51-viewer-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px 30px;text-align:center;}
+.ak51-viewer-media{max-width:100%;max-height:52vh;border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.5);}
+.ak51-viewer-text{color:#fff;font-size:clamp(20px,4vw,30px);font-weight:700;line-height:1.4;white-space:pre-wrap;word-break:break-word;}
+.ak51-viewer-actions{display:flex;align-items:center;gap:14px;padding:16px 20px 26px;}
+.ak51-like{display:flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;border-radius:24px;padding:10px 16px;font-size:15px;cursor:pointer;transition:.12s;}
+.ak51-like:hover{background:rgba(255,255,255,.16);}
+.ak51-del{border:0;background:rgba(255,255,255,.08);color:#fff;border-radius:24px;padding:10px 14px;cursor:pointer;}
+.ak51-emoji-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.ak51-emoji-pick{font-size:22px;border:1px solid var(--line);background:var(--surface-strong);border-radius:11px;padding:7px 10px;cursor:pointer;transition:.12s;}
+.ak51-emoji-pick:hover{transform:scale(1.12);border-color:rgba(11,153,170,.6);}
+  `;
+  document.head.appendChild(st);
+})();
+
+const AK51_TTL=48*3600*1000;
+function ak51Rel(iso){
+  const d=Date.now()-(+new Date(iso));
+  if(d<60000)return tt('только что','just now');
+  if(d<3600000)return Math.floor(d/60000)+(tt(' мин','m'));
+  if(d<86400000)return Math.floor(d/3600000)+(tt(' ч','h'));
+  return Math.floor(d/86400000)+(tt(' д','d'));
+}
+window.ak51FetchStatuses=function(){
+  if(!sessionAuthenticated)return Promise.resolve();
+  const codes=[akLiveCode()].concat((state.entities||[]).filter(e=>e.type==='chat'&&e.contactCode&&!e.bot).map(e=>e.contactCode));
+  return akLive.post('/api/status',{action:'list',codes:codes}).then(res=>{
+    if(res&&res.statuses){state.statusesCache=res.statuses;saveState();if(sessionAuthenticated)renderMain({preserveScroll:true});}
+  }).catch(()=>{});
+};
+function ak51Latest(code){
+  const st=(state.statusesCache||{})[code];if(!st)return null;
+  const recent=Object.values(st).filter(s=>Date.now()-(+new Date(s.at))<AK51_TTL);
+  if(!recent.length)return null;
+  return recent.sort((a,b)=>(+new Date(b.at))-(+new Date(a.at)))[0];
+}
+window.ak51ViewStatus=function(ownerCode,statusId){
+  const cache=state.statusesCache||{};
+  const owner=(state.liveUsers||{})[ownerCode]||(state.entities||[]).find(e=>e.contactCode===ownerCode)||{};
+  const st=(cache[ownerCode]||{})[statusId];if(!st)return;
+  const likes=Object.keys(st.likes||{}).length;
+  let iLiked=!!(st.likes||{})[akLiveCode()];
+  const isMine=ownerCode===akLiveCode();
+  const ov=document.createElement('div');ov.className='ak51-viewer';
+  ov.innerHTML='<div class="ak51-viewer-top"><div class="ak51-viewer-head">'+avatarMarkup({title:owner.title||owner.name||ownerCode,avatar:owner.avatar||null},'profile-avatar')+ '<span>'+escapeHtml(owner.title||owner.name||ownerCode)+' '+window.ak47BadgeForCode(ownerCode)+'</span><span class="ak51-viewer-time">'+escapeHtml(ak51Rel(st.at))+'</span></div><div class="ak51-viewer-progress"><i></i></div><button class="ak51-viewer-close" type="button" data-ak51-close>✕</button></div>'+
+    '<div class="ak51-viewer-body">'+(st.kind==='photo'&&st.media?'<img class="ak51-viewer-media" src="'+escapeAttr(st.media)+'">':'')+'<div class="ak51-viewer-text">'+escapeHtml(st.text||'')+'</div></div>'+
+    '<div class="ak51-viewer-actions">'+
+      '<button class="ak51-like" type="button" data-ak51-like="'+ownerCode+'|'+statusId+'">'+(iLiked?'❤️':'🤍')+' <b>'+likes+'</b></button>'+
+      (isMine?'<button class="ak51-del" type="button" data-ak51-del="'+statusId+'">🗑 <span>'+escapeHtml(tt('Удалить','Delete'))+'</span></button>':'')+
+    '</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('[data-ak51-close]').addEventListener('click',()=>ov.remove());
+  const likeBtn=ov.querySelector('[data-ak51-like]');
+  if(likeBtn)likeBtn.addEventListener('click',()=>{
+    if(iLiked)return;iLiked=true;likeBtn.innerHTML='❤️ <b>'+(likes+1)+'</b>';
+    akLive.post('/api/status',{action:'like',ownerId:ownerCode,statusId:statusId}).catch(()=>{});
+  });
+  const delBtn=ov.querySelector('[data-ak51-del]');
+  if(delBtn)delBtn.addEventListener('click',()=>{akLive.post('/api/status',{action:'remove',statusId:statusId}).then(()=>{ov.remove();window.ak51FetchStatuses();}).catch(()=>{});});
+};
+window.ak51CreateStatus=function(){
+  const body='<div class="field"><textarea id="ak51-status-text" rows="3" placeholder="'+escapeHtml(tt('Что нового?','What\'s new?'))+'" maxlength="300"></textarea></div><div class="ak51-emoji-row">'+['👍','❤️','🔥','😎','🎉','🐱','✨','🌊'].map(e=>'<button class="ak51-emoji-pick" type="button" data-ak51-emoji="'+e+'">'+e+'</button>').join('')+'</div>';
+  showModal({title:tt('Новый статус','New status'),body:body,actions:'<button class="secondary-btn" type="button" data-close-modal>'+escapeHtml(tt('Отмена','Cancel'))+'</button><button class="primary-btn" type="button" data-ak51-publish>'+escapeHtml(tt('Опубликовать','Publish'))+'</button>',onReady(root){
+    root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
+    root.querySelectorAll('[data-ak51-emoji]').forEach(b=>b.addEventListener('click',()=>{const ta=root.querySelector('#ak51-status-text');ta.value=ta.value?ta.value+' '+b.dataset.ak51Emoji:b.dataset.ak51Emoji;ta.focus();}));
+    root.querySelector('[data-ak51-publish]').addEventListener('click',()=>{
+      const text=root.querySelector('#ak51-status-text').value.trim();
+      if(!text){showToast(tt('Введите текст','Enter the text'),'','info');return;}
+      akLive.post('/api/status',{text:text,kind:'text'}).then(()=>{closeModal();showToast(tt('Статус опубликован','Status posted'),'📢','check');window.ak51FetchStatuses();}).catch(()=>{});
+    });
+  }});
+};
+function ak51Strip(){
+  const items=[];
+  const mine=ak51Latest(akLiveCode());
+  items.push('<button class="ak51-st" type="button" data-ak51-create><span class="ak51-st-ring '+(mine?'':'ak51-st-new')+'">'+avatarMarkup({title:state.account.name,avatar:state.account.avatar},'chat-avatar')+'</span><span class="ak51-st-name">'+escapeHtml(tt('Мой статус','My status'))+'</span></button>');
+  (state.entities||[]).filter(e=>e.type==='chat'&&e.contactCode&&!e.bot).forEach(e=>{
+    const latest=ak51Latest(e.contactCode);if(!latest)return;
+    items.push('<button class="ak51-st" type="button" data-ak51-view="'+e.contactCode+'|'+latest.id+'"><span class="ak51-st-ring">'+avatarMarkup({title:e.title,avatar:e.avatar},'chat-avatar')+'</span><span class="ak51-st-name">'+escapeHtml(e.title)+'</span></button>');
+  });
+  return '<div class="ak51-strip" id="ak51-strip">'+items.join('')+'</div>';
+}
+(function post(){
+  const baseRM=(typeof renderMain==='function')?renderMain:null;
+  if(baseRM){
+    renderMain=function(options){
+      const r=baseRM(options);
+      try{ak51Inject();}catch(e){}
+      return r;
+    };
+  }
+  function ak51Inject(){
+    if(!sessionAuthenticated)return;
+    const anchor=document.querySelector('.sidebar-head')||document.querySelector('.sidebar');
+    if(!anchor)return;
+    const old=document.getElementById('ak51-strip');if(old)old.remove();
+    anchor.insertAdjacentHTML('afterend',ak51Strip());
+  }
+  document.addEventListener('click',e=>{
+    const t=e.target&&e.target.closest;
+    const create=t&&t.call(e.target,'[data-ak51-create]');
+    if(create){e.stopPropagation();window.ak51CreateStatus();return;}
+    const view=t&&t.call(e.target,'[data-ak51-view]');
+    if(view){e.stopPropagation();const p=(view.dataset.ak51View||'').split('|');if(p.length===2)window.ak51ViewStatus(p[0],p[1]);}
+  },{capture:true});
+  let t=null;
+  if(sessionAuthenticated){window.ak51FetchStatuses();t=setInterval(()=>window.ak51FetchStatuses(),15000);}
+})();
+})();
+
 setTimeout(()=>{if(sessionAuthenticated)renderMain();},2600);
 
   </script>
