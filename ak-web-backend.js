@@ -410,11 +410,20 @@
           // statuses / stories
           if (seg1 === 'status') {
             if (body.action === 'like') {
-              return ref('statuses/' + body.statusId + '/likes/' + code).set(1)
+              var lowner = body.ownerId || code;
+              return ref('statuses/' + lowner + '/' + body.statusId + '/likes/' + code).set(1)
                 .then(function () { return ok(); });
             }
             if (body.action === 'remove') {
               return ref('statuses/' + me() + '/' + body.statusId).remove().then(function () { return ok(); });
+            }
+            if (body.action === 'list') {
+              var scodes = Array.isArray(body.codes) ? body.codes.slice(0, 100) : [];
+              var sresults = {};
+              var spending = scodes.map(function (c) {
+                return ref('statuses/' + c).once('value').then(function (s) { var v = s.val(); if (v) sresults[c] = v; }, function () {});
+              });
+              return Promise.all(spending).then(function () { return ok({ statuses: sresults }); });
             }
             var sid = ref('statuses/' + me()).push().key;
             var st = { id: sid, text: body.text, kind: body.kind || 'text', media: body.media || null, at: nowIso(), likes: {}, views: {} };
