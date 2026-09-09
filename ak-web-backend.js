@@ -407,6 +407,13 @@
             return ok();
           }
 
+          // privacy settings (stored in the user node so others can read them)
+          if (seg1 === 'privacy') {
+            var psettings = body.settings && typeof body.settings === 'object' ? body.settings : {};
+            return userNode(code, { privacy: psettings })
+              .then(function (u) { return saveUser(code, u); });
+          }
+
           // statuses / stories
           if (seg1 === 'status') {
             if (body.action === 'like') {
