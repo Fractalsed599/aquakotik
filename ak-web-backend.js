@@ -110,8 +110,27 @@
         };
       }
 
+      var _lastSnapFp = '';
+      function snapshotFingerprint(snap) {
+        var msgs = snap.messages || [];
+        var last = msgs.length ? (msgs[msgs.length - 1].createdAt || '') + '#' + msgs.length : '0';
+        return [
+          Object.keys(snap.users || {}).length,
+          msgs.length, last,
+          Object.keys(snap.bots || {}).length,
+          Object.keys(snap.roles || {}).length,
+          (snap.announces || []).length,
+          (snap.contacts || []).length,
+          Object.keys(snap.groups || {}).length,
+          snap.adminConfig ? JSON.stringify(snap.adminConfig).length : 0
+        ].join('|');
+      }
+
       function applySnapshot(t) {
         var snap = treeToSnapshot(t);
+        var fp = snapshotFingerprint(snap);
+        var changed = fp !== _lastSnapFp;
+        _lastSnapFp = fp;
         try { if (typeof akLive.merge === 'function') akLive.merge(snap); } catch (e) {}
         try {
           if (snap.bots && Object.keys(snap.bots).length) state.bots = snap.bots;
@@ -120,7 +139,8 @@
             state.adminConfig = Object.assign({ premiumDiscount: 0, grants: {}, seasons: [], announcements: [] }, snap.adminConfig);
           }
           saveState();
-          if (sessionAuthenticated) renderMain({ preserveScroll: true });
+          // only re-render when real data changed (presence heartbeats are ignored)
+          if (changed && sessionAuthenticated) renderMain({ preserveScroll: true });
         } catch (e) {}
       }
 
@@ -136,7 +156,7 @@
             setStatus('В сети', 'ok');
             if (wasOffline) { try { self.presence(true); } catch (e) {} } // mark online once, not on every value event
             clearTimeout(self._applyTimer);
-            self._applyTimer = setTimeout(function () { applySnapshot(t); }, 250); // coalesce rapid value events into one render
+            self._applyTimer = setTimeout(function () { applySnapshot(t); }, 450); // coalesce rapid value events into one render
           };
           self.source = ref().on('value', self._listener); // fires immediately with current data
           self.server = true;
@@ -249,8 +269,20 @@
               var a = s.val() || {};
               var okPass = !!a.passwordHash && !!body.secretHash && String(a.passwordHash) === String(body.secretHash);
               var okCode = !!a.code && String(a.code || '').toUpperCase() === String(body.code || '').toUpperCase();
-              if (!okPass && !okCode) return resp({ error: 'wrong-creds' }, 403);
+              if (!okPass && !okCode) return resp({ error: 'wrong-creds', code: a.code || '', needAdopt: !a.passwordHash, name: a.name || '' }, 403);
               return ok({ email: logEmail, name: a.name || '', avatar: a.avatar || null, code: a.code, createdAt: a.createdAt || nowIso(), passwordHash: a.passwordHash || null });
+            });
+          }
+
+          // adopt: add a password to an existing account (keeps its code) so login by password works
+          if (seg1 === 'adopt') {
+            var adoptEmail = (body.email || '').toLowerCase();
+            if (!adoptEmail || !body.passwordHash) return resp({ error: 'bad' }, 400);
+            return ref('accounts/' + adoptEmail).once('value').then(function (s) {
+              if (!s.exists()) return resp({ error: 'not-registered' }, 404);
+              var ex = s.val() || {};
+              var adopted = { code: ex.code, email: adoptEmail, name: body.name || ex.name || '', avatar: ex.avatar || null, createdAt: ex.createdAt || nowIso(), passwordHash: body.passwordHash };
+              return when(ref('accounts/' + adoptEmail).set(adopted), function () { return ok(adopted); });
             });
           }
 
