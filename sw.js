@@ -1,7 +1,7 @@
 /* AquaKotik Web — service worker (PWA: install + offline shell)
    Network-first for our own files (so edits propagate), cache as fallback.
    Cross-origin requests (Firebase / CDN) always go straight to the network. */
-const CACHE = 'aquakotik-web-v5';
+const CACHE = 'aquakotik-web-v6';
 const SHELL = ['./', './index.html', './ak-web-backend.js', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

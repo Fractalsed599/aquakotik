@@ -1,5 +1,5 @@
 /* ============================================================================
-   AquaKotik — Web (GitHub Pages) backend adapter
+   AquaKotik — Web (GitHub Pages) backend adapter  (v2 — bugfix release)
    ----------------------------------------------------------------------------
    Turns AquaKotik into a "no server of its own" app: the frontend is static
    (served by GitHub Pages) and the real-time shared state lives in a free,
@@ -15,11 +15,24 @@
      is NOT running on the local Node server. Served by the Node server -> the
      original behaviour is untouched.
 
-   ROBUSTNESS (added)
-   - If the Firebase SDK has not finished loading when this script runs, we
-     wait for it (poll up to ~12s) instead of silently disabling web mode.
-   - A small dismissible status pill in the corner shows the live connection
-     state so the user (and we) can tell at a glance whether web mode is up.
+   v2 FIXES
+   - Login/register: email addresses are NOT valid Firebase path keys (no '@'
+     or '.' allowed) — they are now sanitized to safe keys (accounts/<key>).
+   - Write failures are no longer swallowed: a failed write returns HTTP 500
+     instead of a fake success (register no longer "succeeds" silently).
+   - Login response now carries the user's stars / premium from the users tree
+     so a new device restores the real balance.
+   - Presence now writes a small presence/<code> node (online/typing actually
+     work) and only rewrites the user node when name/avatar changed — the
+     20 s heartbeat no longer re-uploads the whole avatar every time.
+   - Presence nodes auto-expire on disconnect (onDisconnect().remove()).
+   - /api/user uses update() (partial writes) instead of read-modify-write of
+     the whole user node; returns the fresh user record.
+   - /api/gift returns the new message id + both parties' star balances, so
+     the sender's gift card appears instantly and the balance is accurate.
+   - applySnapshot: presence-only events (heartbeats) no longer trigger a full
+     re-merge (message walk + multi-MB saveState + full re-render) — that was
+     the main source of lag. A content fingerprint decides.
    ========================================================================== */
 (function () {
   'use strict';
@@ -73,6 +86,12 @@
       function nowIso() { return new Date().toISOString(); }
       function rnd() { return Math.random().toString(36).slice(2, 8); }
 
+      /* FIX: Firebase path keys cannot contain '@' '.' '#' '$' '[' ']' —
+         emails must be sanitized before use as a path segment. */
+      function safeKey(s) {
+        return String(s || '').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+      }
+
       function asArray(obj) {
         if (Array.isArray(obj)) return obj;
         if (!obj || typeof obj !== 'object') return [];
@@ -110,38 +129,85 @@
         };
       }
 
-      var _lastSnapFp = '';
-      function snapshotFingerprint(snap) {
+      /* ---- content fingerprint: decides whether a snapshot event is worth a
+            full merge (message walk + saveState + renderMain). Presence-only
+            events (20 s heartbeats, typing) do NOT change it. ---- */
+      function hashStr(s) {
+        var h = 2166136261;
+        for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+      }
+      function contentFingerprint(snap) {
+        var p = [];
+        var ukeys = Object.keys(snap.users || {}).sort();
+        p.push('U' + ukeys.length);
+        for (var i = 0; i < ukeys.length; i++) {
+          var u = snap.users[ukeys[i]] || {};
+          p.push(ukeys[i] + ':' + String(u.name || '').length + ':' + (u.avatar ? String(u.avatar).length : 0) + ':' +
+            (u.stars || 0) + ':' + String(u.premiumUntil || '') + ':' + (u.verified ? 1 : 0) + ':' +
+            (u.starsOnly ? 1 : 0) + ':' + (u.gender || '') + ':' +
+            (u.profile ? JSON.stringify(u.profile).length : 0) + ':' +
+            (u.schedule ? JSON.stringify(u.schedule).length : 0) + ':' +
+            (u.equippedEmojis && u.equippedEmojis.length ? u.equippedEmojis.length : 0) + ':' +
+            (u.collectibles ? Object.keys(u.collectibles).length : 0) + ':' +
+            (u.privacy ? JSON.stringify(u.privacy).length : 0));
+        }
         var msgs = snap.messages || [];
-        var last = msgs.length ? (msgs[msgs.length - 1].createdAt || '') + '#' + msgs.length : '0';
-        return [
-          Object.keys(snap.users || {}).length,
-          msgs.length, last,
-          Object.keys(snap.bots || {}).length,
-          Object.keys(snap.roles || {}).length,
-          (snap.announces || []).length,
-          (snap.contacts || []).length,
-          Object.keys(snap.groups || {}).length,
-          snap.adminConfig ? JSON.stringify(snap.adminConfig).length : 0
-        ].join('|');
+        var maxTs = 0, textLen = 0, idHash = 0;
+        for (var j = 0; j < msgs.length; j++) {
+          var m = msgs[j] || {};
+          var ts = Date.parse(m.createdAt || '');
+          if (!isNaN(ts) && ts > maxTs) maxTs = ts;
+          textLen += String(m.text || '').length;
+          idHash = (idHash + hashStr(String(m.id || j) + '~' + (m.text || '').length)) >>> 0;
+        }
+        p.push('M' + msgs.length + ':' + maxTs + ':' + textLen + ':' + idHash);
+        p.push('C' + (snap.contacts || []).length);
+        var gks = Object.keys(snap.groups || {}).sort();
+        p.push('G' + gks.length);
+        gks.forEach(function (k) {
+          var g = snap.groups[k] || {};
+          p.push(k + ':' + String(g.title || '').length + ':' + asArray(g.members).length + ':' + (g.updatedAt || g.createdAt || ''));
+        });
+        var bks = Object.keys(snap.bots || {}).sort();
+        p.push('B' + bks.length);
+        bks.forEach(function (k) {
+          var b = snap.bots[k] || {};
+          p.push(k + ':' + String(b.name || '').length + ':' + (b.updatedAt || b.createdAt || ''));
+        });
+        p.push('A' + (snap.announces || []).length);
+        var pks = Object.keys(snap.polls || {}).sort();
+        p.push('P' + pks.length);
+        pks.forEach(function (k) {
+          var pl = snap.polls[k] || {};
+          p.push(k + ':' + Object.keys(pl.votes || {}).length + ':' + (pl.createdAt || ''));
+        });
+        p.push('R' + Object.keys(snap.roles || {}).sort().join(','));
+        p.push('AC' + (snap.adminConfig ? JSON.stringify(snap.adminConfig).length : 0));
+        return p.join('|');
       }
 
+      var _lastFp = '';
       function applySnapshot(t) {
         var snap = treeToSnapshot(t);
-        var fp = snapshotFingerprint(snap);
-        var changed = fp !== _lastSnapFp;
-        _lastSnapFp = fp;
-        try { if (typeof akLive.merge === 'function') akLive.merge(snap); } catch (e) {}
+        try {
+          // presence/user identity always applied cheaply — no merge needed for it
+          state.liveUsers = snap.users;
+          state.livePresence = snap.presence;
+        } catch (e) {}
+        var fp = contentFingerprint(snap);
+        var changed = fp !== _lastFp;
+        _lastFp = fp;
         try {
           if (snap.bots && Object.keys(snap.bots).length) state.bots = snap.bots;
           if (snap.roles) state.roles = snap.roles;
           if (snap.adminConfig) {
             state.adminConfig = Object.assign({ premiumDiscount: 0, grants: {}, seasons: [], announcements: [] }, snap.adminConfig);
           }
-          saveState();
-          // only re-render when real data changed (presence heartbeats are ignored)
-          if (changed && sessionAuthenticated) renderMain({ preserveScroll: true });
         } catch (e) {}
+        if (!changed) return; // presence-only event (heartbeat/typing) -> no full re-render
+        try { if (typeof akLive.merge === 'function') akLive.merge(snap); } catch (e) {}
+        // note: akLive.merge() itself already calls saveState() + renderMain()
       }
 
       /* ---- live feed: replace SSE EventSource with a real-time onValue listener ---- */
@@ -183,8 +249,16 @@
       }
       function resp(obj, status) { return mkResp(obj, status); }
       function ok(extra) { return resp(Object.assign({ ok: true }, extra || {}), 200); }
-      function when(promise, onDone) { return promise.then(onDone, function (e) { try { console.warn('[AquaKotik] op failed:', e && e.message, e); } catch (_) {} return onDone(e); }); }
+      /* FIX: a failed write must NOT be converted into a fake success. */
+      function when(promise, onDone) {
+        return promise.then(onDone, function (e) {
+          try { console.warn('[AquaKotik] op failed:', e && e.message, e); } catch (_) {}
+          return resp({ error: 'write-failed' }, 500);
+        });
+      }
 
+      /* read-modify-write of the user node (kept for admin ops that need the
+         full record in the response) */
       function userNode(code, patch) {
         return ref('users/' + code).once('value').then(function (s) {
           var u = s.val() || {};
@@ -196,6 +270,21 @@
         });
       }
       function saveUser(code, u) { return when(ref('users/' + code).set(u), function () { return ok({ user: u }); }); }
+      /* partial user write — only the given fields, no read needed */
+      function updateUser(code, fields) {
+        var up = {};
+        Object.keys(fields || {}).forEach(function (k) { if (fields[k] !== undefined) up[k] = fields[k]; });
+        up.updatedAt = nowIso();
+        return when(ref('users/' + code).update(up), function () {
+          return ref('users/' + code).once('value').then(function (s) {
+            return ok({ user: s.val() || Object.assign({ code: code }, up) });
+          }, function () { return ok({ user: Object.assign({ code: code }, up) }); });
+        });
+      }
+
+      /* per-session cache of the last synced name/avatar signature, so the
+         20 s presence heartbeat doesn't rewrite the user node each time */
+      var _lastPresenceSig = {};
 
       window.fetch = function (input, init) {
         try {
@@ -235,9 +324,10 @@
           if (seg1 === 'email') {
             var email = (body.email || '').toLowerCase();
             if (!email) return ok();
-            return ref('claims/' + email).once('value').then(function (s) {
+            var ek = safeKey(email);
+            return ref('claims/' + ek).once('value').then(function (s) {
               if (s.exists() && s.val() !== body.code) return resp({ error: 'taken' }, 409);
-              return when(ref('claims/' + email).set(body.code), function () { return ok(); });
+              return when(ref('claims/' + ek).set(body.code), function () { return ok(); });
             });
           }
 
@@ -245,18 +335,19 @@
           if (seg1 === 'register') {
             var regEmail = (body.email || '').toLowerCase();
             if (!regEmail || !body.code) return resp({ error: 'bad' }, 400);
-            return ref('accounts/' + regEmail).once('value').then(function (s) {
+            var rk = safeKey(regEmail);
+            return ref('accounts/' + rk).once('value').then(function (s) {
               if (s.exists()) {
                 // account already exists: adopt the cloud record if it has no password yet
                 var ex = s.val() || {};
                 if (!ex.passwordHash && body.passwordHash) {
                   var adopted = { code: body.code, email: regEmail, name: body.name || ex.name || '', avatar: body.avatar || ex.avatar || null, createdAt: ex.createdAt || nowIso(), passwordHash: body.passwordHash };
-                  return when(ref('accounts/' + regEmail).set(adopted), function () { return ok(adopted); });
+                  return when(ref('accounts/' + rk).set(adopted), function () { return ok(adopted); });
                 }
                 return resp({ error: 'taken' }, 409);
               }
               var acc = { code: body.code, email: regEmail, name: body.name || '', avatar: body.avatar || null, createdAt: nowIso(), passwordHash: body.passwordHash || null };
-              return when(ref('accounts/' + regEmail).set(acc), function () { return ok(acc); });
+              return when(ref('accounts/' + rk).set(acc), function () { return ok(acc); });
             });
           }
 
@@ -264,13 +355,30 @@
           if (seg1 === 'login') {
             var logEmail = (body.email || '').toLowerCase();
             if (!logEmail) return resp({ error: 'bad' }, 400);
-            return ref('accounts/' + logEmail).once('value').then(function (s) {
+            var lk = safeKey(logEmail);
+            return ref('accounts/' + lk).once('value').then(function (s) {
               if (!s.exists()) return resp({ error: 'not-registered' }, 404);
               var a = s.val() || {};
               var okPass = !!a.passwordHash && !!body.secretHash && String(a.passwordHash) === String(body.secretHash);
               var okCode = !!a.code && String(a.code || '').toUpperCase() === String(body.code || '').toUpperCase();
               if (!okPass && !okCode) return resp({ error: 'wrong-creds', code: a.code || '', needAdopt: !a.passwordHash, name: a.name || '' }, 403);
-              return ok({ email: logEmail, name: a.name || '', avatar: a.avatar || null, code: a.code, createdAt: a.createdAt || nowIso(), passwordHash: a.passwordHash || null });
+              function done(usr) {
+                return ok({
+                  email: logEmail, name: a.name || '', avatar: a.avatar || null, code: a.code,
+                  createdAt: a.createdAt || nowIso(), passwordHash: a.passwordHash || null,
+                  stars: usr ? Number(usr.stars || 0) : 0,
+                  premiumUntil: usr ? (usr.premiumUntil || null) : null,
+                  user: usr || null
+                });
+              }
+              // attach the real balance/premium so a new device starts with the right numbers
+              return ref('users/' + a.code + '/stars').once('value').then(function (st) {
+                return ref('users/' + a.code).once('value').then(function (us) {
+                  var usr = us.val() || null;
+                  if (usr) usr.stars = Number(st.val() || 0);
+                  return done(usr);
+                }, function () { return done(null); });
+              }, function () { return done(null); });
             });
           }
 
@@ -278,18 +386,36 @@
           if (seg1 === 'adopt') {
             var adoptEmail = (body.email || '').toLowerCase();
             if (!adoptEmail || !body.passwordHash) return resp({ error: 'bad' }, 400);
-            return ref('accounts/' + adoptEmail).once('value').then(function (s) {
+            var ak2 = safeKey(adoptEmail);
+            return ref('accounts/' + ak2).once('value').then(function (s) {
               if (!s.exists()) return resp({ error: 'not-registered' }, 404);
               var ex = s.val() || {};
               var adopted = { code: ex.code, email: adoptEmail, name: body.name || ex.name || '', avatar: ex.avatar || null, createdAt: ex.createdAt || nowIso(), passwordHash: body.passwordHash };
-              return when(ref('accounts/' + adoptEmail).set(adopted), function () { return ok(adopted); });
+              return when(ref('accounts/' + ak2).set(adopted), function () { return ok(adopted); });
             });
           }
 
-          // presence heartbeat
+          // presence heartbeat — small node, no full user re-upload every 20 s
           if (seg1 === 'presence') {
-            return userNode(code, { name: body.name, avatar: body.avatar, online: !!body.online, typingTo: body.typingTo || null, updatedAt: nowIso() })
-              .then(function (u) { if (body.online) u.lastSeen = nowIso(); return saveUser(code, u); });
+            var pcode = code;
+            var ppres = { code: pcode, online: !!body.online, typingTo: body.typingTo || null, lastSeen: nowIso() };
+            var presP = ref('presence/' + pcode).set(ppres);
+            var expP = ref('presence/' + pcode).onDisconnect().remove(); // auto-offline when the tab closes
+            var psig = (body.name || '') + '|' + (body.avatar ? String(body.avatar).length : 0);
+            var userP;
+            if (_lastPresenceSig[pcode] !== psig) {
+              _lastPresenceSig[pcode] = psig;
+              var pup = {};
+              if (body.name != null) pup.name = body.name;
+              if (body.avatar != null) pup.avatar = body.avatar;
+              pup.updatedAt = nowIso();
+              userP = ref('users/' + pcode).update(pup).then(function () {}, function (e) {
+                try { console.warn('[AquaKotik] presence user update failed:', e && e.message); } catch (_) {}
+              });
+            } else {
+              userP = Promise.resolve();
+            }
+            return Promise.all([presP, userP, expP]).then(function () { return ok({ presence: ppres }); });
           }
 
           // message (1-on-1 / group / channel)
@@ -318,8 +444,10 @@
             if (body.poll) msg.poll = body.poll;
             if (body.gift) msg.gift = body.gift;
             if (body.kind) msg.kind = body.kind;
+            if (body.media) msg.media = body.media;
+            if (body.subject) msg.subject = body.subject;
             var mfrom = body.fromCode || code, mto = body.toCode, mpaid = Number(body.starsPaid || 0);
-            return ref('messages/' + entityId + '/' + key).set(msg).then(function () {
+            return when(ref('messages/' + entityId + '/' + key).set(msg), function () {
               if (mpaid > 0 && mto) {
                 return ref('users/' + mto + '/starsOnly').once('value').then(function (s) {
                   if (!s.val()) return ok({ id: key });
@@ -361,14 +489,54 @@
                 ['title', 'description', 'avatar', 'public'].forEach(function (k) { if (body[k] !== undefined) g[k] = body[k]; });
                 if (body.invite) g.invite = body.invite;
               }
+              g.updatedAt = nowIso();
               var record = Object.assign({}, g, { members: asArray(g.members) });
               return when(ref('groups/' + gid).set(g), function () { return ok({ record: record }); });
             });
           }
 
-          // user profile update (name, gender, profile{font,accent}, schedule, starsOnly, cosmetics, ...)
+          // user profile update — partial writes, no full-node read-modify-write
           if (seg1 === 'user') {
-            return userNode(code, body).then(function (u) { return saveUser(code, u); });
+            var uf = {};
+            if (body.name != null) uf.name = String(body.name).slice(0, 80);
+            if (body.gender != null && ['male', 'female', 'none'].indexOf(body.gender) !== -1) uf.gender = body.gender;
+            if (typeof body.stars === 'number' && isFinite(body.stars)) uf.stars = Math.max(0, Math.min(9999999, Math.round(body.stars)));
+            if (body.profile && typeof body.profile === 'object') {
+              uf.profile = {
+                font: ['system', 'rounded', 'mono', 'serif'].indexOf(body.profile.font) !== -1 ? body.profile.font : 'system',
+                accent: ['ocean', 'sunset', 'violet', 'gold', 'mint'].indexOf(body.profile.accent) !== -1 ? body.profile.accent : 'ocean'
+              };
+            }
+            if (body.schedule && typeof body.schedule === 'object') {
+              var sf = String(body.schedule.from || '09:00').slice(0, 5);
+              var sto = String(body.schedule.to || '18:00').slice(0, 5);
+              uf.schedule = { enabled: !!body.schedule.enabled, from: /^\d{2}:\d{2}$/.test(sf) ? sf : '09:00', to: /^\d{2}:\d{2}$/.test(sto) ? sto : '18:00' };
+            }
+            if (typeof body.starsOnly === 'boolean') uf.starsOnly = body.starsOnly;
+            if (typeof body.messagePrice === 'number') uf.messagePrice = Math.max(0, Math.min(99999, Math.round(body.messagePrice)));
+            if (Array.isArray(body.cosmetics)) {
+              var cosAllowed = { 'gold-frame': 1, 'name-sparkle': 1, 'bubble-wave': 1 };
+              uf.cosmetics = body.cosmetics.filter(function (id) { return typeof id === 'string' && cosAllowed[id]; })
+                .filter(function (v, i, a) { return a.indexOf(v) === i; });
+            }
+            if (body.avatar != null) uf.avatar = body.avatar;
+            if (typeof body.equippedEmojis === 'object') uf.equippedEmojis = body.equippedEmojis;
+            if (body.privacy && typeof body.privacy === 'object') uf.privacy = body.privacy;
+            if (body.verified != null) uf.verified = !!body.verified;
+            if (body.premiumUntil != null) uf.premiumUntil = body.premiumUntil ? String(body.premiumUntil).slice(0, 40) : null;
+            if (typeof body.premiumMonths === 'number' && body.premiumMonths > 0) {
+              // extend from the current expiry (small read, then update)
+              return ref('users/' + code + '/premiumUntil').once('value').then(function (s) {
+                var cur = s.val() ? new Date(s.val()).getTime() : 0;
+                var base = Math.max(Date.now(), cur);
+                uf.premiumUntil = new Date(Math.min(base + body.premiumMonths * 30 * 86400000, Date.now() + 366 * 86400000)).toISOString();
+                return updateUser(code, uf);
+              });
+            }
+            if (!Object.keys(uf).length) {
+              return ref('users/' + code).once('value').then(function (s) { return ok({ user: s.val() || { code: code } }); });
+            }
+            return updateUser(code, uf);
           }
 
           // bots (multi-action)
@@ -384,6 +552,7 @@
               } else {
                 ['name', 'emoji', 'avatar', 'rules', 'display'].forEach(function (k) { if (body[k] !== undefined) b[k] = body[k]; });
               }
+              b.updatedAt = nowIso();
               return when(ref('bots/' + bcode).set(b), function () { return ok({ bot: b }); });
             });
           }
@@ -401,30 +570,32 @@
             if (seg2 === 'stars') {
               var target = body.code || body.toCode || code;
               var amount = Number(body.amount || 0);
-              return ref('users/' + target + '/stars').transaction(function (cur) { return (cur || 0) + amount; })
+              return ref('users/' + target + '/stars').transaction(function (cur) { return Math.max(0, (cur || 0) + amount); })
                 .then(function () { return ok(); }, function () { return ok(); });
             }
             if (seg2 === 'premium') {
               var ptarget = body.code || body.toCode || code;
               var pmonths = Number(body.months || 1);
-              var until = new Date(Date.now() + pmonths * 30 * 24 * 3600 * 1000).toISOString();
-              return userNode(ptarget, { premium: true, premiumUntil: until })
-                .then(function (u) { return saveUser(ptarget, u); });
+              return ref('users/' + ptarget + '/premiumUntil').once('value').then(function (s) {
+                var cur = s.val() ? new Date(s.val()).getTime() : 0;
+                var base = Math.max(Date.now(), cur);
+                var until = new Date(Math.min(base + pmonths * 30 * 24 * 3600 * 1000, Date.now() + 366 * 24 * 3600 * 1000)).toISOString();
+                return updateUser(ptarget, { premium: true, premiumUntil: until });
+              });
             }
             if (seg2 === 'badge') {
               var btarget = body.code || body.toCode || code;
-              return userNode(btarget, { verified: !!body.verified })
-                .then(function (u) { return saveUser(btarget, u); });
+              return updateUser(btarget, { verified: !!body.verified });
             }
             if (seg2 === 'announce') {
               var aid = ref('announces').push().key;
               var ann = { id: aid, text: body.text, at: nowIso(), adminEmail: ADMIN };
-              return when(ref('announces/' + aid).set(ann), function () { return ok({ announce: ann }); });
+              return when(ref('announces/' + aid).set(ann), function () { return ok({ announce: ann, item: ann }); });
             }
             if (seg2 === 'poll') {
               var pid = body.id || ('p' + rnd());
               var poll = { id: pid, question: body.question, options: body.options, votes: {}, hours: body.hours, adminEmail: ADMIN, createdAt: nowIso() };
-              return when(ref('polls/' + pid).set(poll), function () { return ok({ poll: poll }); });
+              return when(ref('polls/' + pid).set(poll), function () { return ok({ poll: poll, record: poll }); });
             }
             if (seg2 === 'role') {
               var rtarget = (body.code || '').toUpperCase();
@@ -445,12 +616,19 @@
           if (seg1 === 'gift') {
             var from = code, to = body.toCode, amt = Number(body.amount || 0);
             var giftType = body.giftType || 'stars', giftId = body.giftId || null;
-            var gEntity = body.entityId || ('gift:' + to);
+            // the chat entity id when available, so BOTH sides see the card in the right chat
+            var gEntity = (body.entityId && /^[\w:]{1,64}$/.test(body.entityId)) ? body.entityId : ('gift:' + to);
             var giftText = 'GIFT|' + (giftType === 'emoji' ? ('emoji|' + giftId) : giftType === 'premium' ? 'premium' : ('stars|' + amt));
-            function postGiftMsg() {
-              var gKey = ref('messages/' + gEntity).push().key;
-              var gm = { id: gKey, fromCode: from, toCode: to, entityId: gEntity, text: giftText, createdAt: nowIso(), gift: amt, giftType: giftType };
-              return ref('messages/' + gEntity + '/' + gKey).set(gm);
+            var gKey = ref('messages/' + gEntity).push().key;
+            var gm = { id: gKey, fromCode: from, toCode: to, entityId: gEntity, text: giftText, createdAt: nowIso(), gift: amt, giftType: giftType };
+            function postGiftMsg() { return ref('messages/' + gEntity + '/' + gKey).set(gm); }
+            function balances() {
+              function one(c) {
+                return ref('users/' + c + '/stars').once('value')
+                  .then(function (s) { return { code: c, stars: Number(s.val() || 0) }; })
+                  .catch(function () { return { code: c, stars: 0 }; });
+              }
+              return Promise.all([one(from), one(to)]).then(function (rs) { return { from: rs[0], to: rs[1] }; });
             }
             if (giftType === 'emoji') {
               return ref('users/' + from + '/stars').transaction(function (cur) { if ((cur || 0) < amt) throw new Error('no'); return cur - amt; })
@@ -458,16 +636,28 @@
                   return ref('users/' + to + '/collectibles').once('value').then(function (s) {
                     var col = s.val() || {};
                     if (!col[giftId]) col[giftId] = { id: giftId, gotAt: nowIso(), from: from, gifted: true };
-                    return ref('users/' + to + '/collectibles').set(col).then(function () { return postGiftMsg().then(function () { return ok({ owned: true }); }); });
+                    return ref('users/' + to + '/collectibles').set(col).then(function () {
+                      return postGiftMsg().then(function () {
+                        return balances().then(function (b) { return ok({ id: gKey, owned: true, from: b.from }); });
+                      });
+                    });
                   });
-                }, function () { return resp({ error: 'not-enough-stars' }, 409); });
+                }).catch(function () { return resp({ error: 'not-enough-stars' }, 409); });
             }
             if (giftType === 'premium') {
               return ref('users/' + from + '/stars').transaction(function (cur) { if ((cur || 0) < amt) throw new Error('no'); return cur - amt; })
                 .then(function () {
-                  var until = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-                  return userNode(to, { premium: true, premiumUntil: until }).then(function (u) { return saveUser(to, u).then(function () { return postGiftMsg().then(function () { return ok({ premium: true }); }); }); });
-                }, function () { return resp({ error: 'not-enough-stars' }, 409); });
+                  return ref('users/' + to + '/premiumUntil').once('value').then(function (s) {
+                    var cur = s.val() ? new Date(s.val()).getTime() : 0;
+                    var base = Math.max(Date.now(), cur);
+                    var until = new Date(base + 30 * 24 * 3600 * 1000).toISOString();
+                    return updateUser(to, { premium: true, premiumUntil: until }).then(function () {
+                      return postGiftMsg().then(function () {
+                        return balances().then(function (b) { return ok({ id: gKey, premium: true, from: b.from, to: b.to }); });
+                      });
+                    });
+                  });
+                }).catch(function () { return resp({ error: 'not-enough-stars' }, 409); });
             }
             // default: stars transfer
             return ref('users/' + from + '/stars').transaction(function (cur) { return Math.max(0, (cur || 0) - amt); })
@@ -476,7 +666,9 @@
                 return Promise.resolve();
               })
               .then(function () {
-                return postGiftMsg().then(function () { return ok(); });
+                return postGiftMsg().then(function () {
+                  return balances().then(function (b) { return ok({ id: gKey, from: b.from, to: b.to }); });
+                });
               });
           }
 
@@ -488,7 +680,7 @@
               return ref('users/' + cc + '/stars').transaction(function (cur) {
                 if ((cur || 0) < price) throw new Error('not-enough-stars');
                 return cur - price;
-              }).then(function (ok2) {
+              }).then(function () {
                 return ref('users/' + cc + '/collectibles').once('value').then(function (s) {
                   var col = s.val() || {};
                   col[body.id] = { id: body.id, gotAt: nowIso(), bought: true };
@@ -504,8 +696,7 @@
               });
             }
             if (body.action === 'equip') {
-              return userNode(cc, { equippedEmojis: body.equipped || [] })
-                .then(function (u) { return saveUser(cc, u); });
+              return updateUser(cc, { equippedEmojis: body.equipped || [] });
             }
             return ok();
           }
@@ -513,8 +704,7 @@
           // privacy settings (stored in the user node so others can read them)
           if (seg1 === 'privacy') {
             var psettings = body.settings && typeof body.settings === 'object' ? body.settings : {};
-            return userNode(code, { privacy: psettings })
-              .then(function (u) { return saveUser(code, u); });
+            return updateUser(code, { privacy: psettings });
           }
 
           // statuses / stories
@@ -565,7 +755,7 @@
       try { window.AQUAKOTIK_WEB = true; } catch (e) {}
       window.AQUAKOTIK_WEB_READY = true;
       setStatus('В сети', 'ok');
-      console.info('[AquaKotik] Web mode active — Firebase backend (root: ' + ROOT + ').');
+      console.info('[AquaKotik] Web mode active — Firebase backend v2 (root: ' + ROOT + ').');
     } catch (e) {
       try { console.error('[AquaKotik] web mode failed:', e); } catch (_) {}
       setStatus('Ошибка Firebase', 'err');

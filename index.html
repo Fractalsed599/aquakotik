@@ -1932,7 +1932,9 @@ function renderAuth() {
       if (res.status === 200) {
         const acc = await res.json();
         state.account = { id: makeId('user'), name: acc.name || email.split('@')[0], email: acc.email, passwordHash: acc.passwordHash || null, createdAt: acc.createdAt || nowIso(), avatar: acc.avatar || null, aquaCode: acc.code };
-        state.stars = 0;
+        // restore the real balance/premium from the cloud user record (web mode)
+        state.stars = Number(acc.stars || 0);
+        if (acc.premiumUntil) { state.premiumUntil = acc.premiumUntil; state.premium = new Date(acc.premiumUntil).getTime() > Date.now(); }
         saveState();
         sessionAuthenticated = true;
         seedPublicChannels();
@@ -7007,8 +7009,8 @@ ak43ApplyCosmetics();
     const list=getMessages(entity.id);
     if(list.some(item=>item.serverId===message.id))return;
     const local={
-      sender:'them',
-      senderName:state.liveUsers?.[message.fromCode]?.name||entity.title,
+      sender:_isOwnGift?'me':'them',
+      senderName:_isOwnGift?((state.account&&state.account.name)||entity.title):(state.liveUsers?.[message.fromCode]?.name||entity.title),
       text:message.text,
       createdAt:message.createdAt,
       serverId:message.id
@@ -7311,8 +7313,10 @@ ak43ApplyCosmetics();
           if(amount>balance){showToast(tx('notEnoughStars'),'','star');return;}
           if(isUser){
             closeModal();
-            akLive.post('/api/gift',{code:myCode(),toCode:entity.contactCode,amount}).then(res=>{
-              if(res&&res.from){state.stars=res.from.stars;saveState();}
+            akLive.post('/api/gift',{code:myCode(),toCode:entity.contactCode,amount,entityId:entity.id}).then(res=>{
+              if(res&&res.ok===false)return;
+              if(res&&res.from){state.stars=Number(res.from.stars||0);saveState();}
+              ak48AddLocalGift(entity,'stars',amount,res&&res.id);
               showToast(t('Подарок отправлен ✓','Gift sent ✓'),`${amount}⭐ → ${entity.title}`,'star');
               renderMain({preserveScroll:true});
             }).catch(()=>{});
@@ -7825,6 +7829,24 @@ window.ak48OpenUserProfile=function(code){
   }});
 };
 
+/* ---- sender-side gift card: added locally on success so the animated card
+     appears in the sender's chat instantly (deduped by serverId later) ---- */
+function ak48AddLocalGift(entity,giftType,val,resId){
+  try{
+    if(!entity)return;
+    const toCode=entity.contactCode;if(!toCode)return;
+    let ent=(entity.id)?entity:state.entities.find(e=>e.contactCode===toCode);
+    if(!ent){
+      ent={id:makeId('chat'),type:'chat',title:entity.title||toCode,avatar:entity.avatar||null,createdAt:nowIso(),blocked:false,chatTheme:'ocean',unread:0,description:toCode,phone:toCode,contactCode:toCode,ownedByMe:true};
+      state.entities.push(ent);state.messages[ent.id]=[];
+    }
+    const list=getMessages(ent.id);
+    if(resId&&list.some(m=>m.serverId===resId))return;
+    list.push({id:makeId('message'),serverId:resId||null,sender:'me',senderName:(state.account&&state.account.name)||'',text:'GIFT|'+giftType+'|'+val,gift:giftType==='stars'?Number(val)||0:undefined,giftType:giftType,createdAt:nowIso()});
+    saveState();
+  }catch(e){}
+}
+
 /* ---- gift shop (stars + emojis + premium) ---- */
 window.ak48OpenGiftModal=function(entity){
   if(!entity||!entity.contactCode){showToast(tt('Выберите контакт','Choose a contact'),'','block');return;}
@@ -7838,16 +7860,31 @@ window.ak48OpenGiftModal=function(entity){
     root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal));
     root.querySelectorAll('[data-ak48-stars]').forEach(b=>b.addEventListener('click',()=>{
       const n=Number(b.dataset.ak48Stars);if(n>balance){showToast(tx('notEnoughStars'),'','star');return;}
-      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:n,giftType:'stars'}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Подарок отправлен ✓','Gift sent ✓'),'⭐ '+n+' → '+toName,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:n,giftType:'stars',entityId:entity.id}).then(res=>{
+        if(res&&res.ok===false)return;
+        if(res&&res.from)state.stars=Number(res.from.stars||0);
+        ak48AddLocalGift(entity,'stars',n,res&&res.id);
+        showToast(tt('Подарок отправлен ✓','Gift sent ✓'),'⭐ '+n+' → '+toName,'star');renderMain({preserveScroll:true});
+      }).catch(()=>{});
     }));
     root.querySelectorAll('[data-ak48-emoji]').forEach(b=>b.addEventListener('click',()=>{
       const id=b.dataset.ak48Emoji,g=AK48_GIFTS[id];if(!g)return;if(g.p>balance){showToast(tx('notEnoughStars'),'','star');return;}
-      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:g.p,giftType:'emoji',giftId:id}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Подарок отправлен ✓','Gift sent ✓'),g.e+' '+g.n+' → '+toName,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:g.p,giftType:'emoji',giftId:id,entityId:entity.id}).then(res=>{
+        if(res&&res.ok===false)return;
+        if(res&&res.from)state.stars=Number(res.from.stars||0);
+        ak48AddLocalGift(entity,'emoji',id,res&&res.id);
+        showToast(tt('Подарок отправлен ✓','Gift sent ✓'),g.e+' '+g.n+' → '+toName,'star');renderMain({preserveScroll:true});
+      }).catch(()=>{});
     }));
     const pm=root.querySelector('[data-ak48-premium]');
     if(pm)pm.addEventListener('click',()=>{
       if(AK48_PREMIUM>balance){showToast(tx('notEnoughStars'),'','star');return;}
-      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:AK48_PREMIUM,giftType:'premium'}).then(res=>{if(res&&res.ok===false)return;showToast(tt('Премиум подарен ✓','Premium gifted ✓'),'👑 → '+toName,'star');renderMain({preserveScroll:true});}).catch(()=>{});
+      closeModal();akLive.post('/api/gift',{code:myCode(),toCode:toCode,amount:AK48_PREMIUM,giftType:'premium',entityId:entity.id}).then(res=>{
+        if(res&&res.ok===false)return;
+        if(res&&res.from)state.stars=Number(res.from.stars||0);
+        ak48AddLocalGift(entity,'premium','1',res&&res.id);
+        showToast(tt('Премиум подарен ✓','Premium gifted ✓'),'👑 → '+toName,'star');renderMain({preserveScroll:true});
+      }).catch(()=>{});
     });
   }});
 };
@@ -8823,9 +8860,12 @@ window.ak53CatCount=CAT_ICONS.length;
   'use strict';
   var st = document.createElement('style');
   st.textContent = `
-.ak57-gift{display:flex;align-items:center;gap:14px;width:100%;max-width:360px;padding:16px 18px;border-radius:18px;background:linear-gradient(150deg,rgba(18,214,196,.18),rgba(255,255,255,.55) 62%);border:1px solid rgba(18,214,196,.4);box-shadow:0 8px 26px rgba(18,214,196,.2);position:relative;overflow:hidden;}
+.ak57-gift{display:flex;align-items:center;gap:14px;width:100%;max-width:360px;padding:16px 18px;border-radius:18px;background:linear-gradient(150deg,rgba(18,214,196,.18),rgba(255,255,255,.55) 62%);border:1px solid rgba(18,214,196,.4);box-shadow:0 8px 26px rgba(18,214,196,.2);position:relative;overflow:hidden;animation:ak57giftin .55s cubic-bezier(.18,.89,.32,1.2) both;}
+@keyframes ak57giftin{from{opacity:0;transform:translateY(18px) scale(.88);}60%{opacity:1;}to{opacity:1;transform:translateY(0) scale(1);}}
 .ak57-gift:before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 82% 18%,rgba(255,255,255,.45),transparent 46%);pointer-events:none;}
-.ak57-gift-ic{display:flex;align-items:center;justify-content:center;flex:none;filter:drop-shadow(0 4px 10px rgba(18,214,196,.4));}
+.ak57-gift-ic{display:flex;align-items:center;justify-content:center;flex:none;filter:drop-shadow(0 4px 10px rgba(18,214,196,.4));animation:ak57icpop .6s .12s cubic-bezier(.2,1.6,.4,1) both;}
+@keyframes ak57icpop{from{transform:scale(0) rotate(-28deg);}to{transform:scale(1) rotate(0);}}
+@media (prefers-reduced-motion:reduce){.ak57-gift,.ak57-gift-ic{animation:none;}}
 .ak57-gift-ic .ak3dstar{width:66px;height:66px;}
 .ak57-gift-ic svg{width:48px;height:48px;color:#0a97a6;}
 .ak57-gift-e{font-size:52px;line-height:1;}
