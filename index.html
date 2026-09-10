@@ -1178,10 +1178,10 @@ const I18N = {
     accountExistsHint: 'A second account cannot be registered in this local application.',
     invalidLogin: 'The email or code is incorrect.',
     completeFields: 'Complete all required fields.',
-    loginCode: 'Login code',
-    loginCodeHint: 'Enter your email and the device login-code. The code is shown on the device where you registered.',
+    loginCode: 'Password or login-code',
+    loginCodeHint: 'Enter your email and your password (or the device login-code shown when you registered).',
     notRegistered: 'This email is not registered yet. Register first.',
-    wrongCode: 'The login code is incorrect.',
+    wrongCode: 'Wrong password or code. Please check and try again.',
     loginRestored: 'Account restored',
     loginByCode: 'Log in with email + code',
     yourLoginCode: 'Your login-code',
@@ -1357,10 +1357,10 @@ const I18N = {
     accountExistsHint: 'В этом локальном приложении нельзя зарегистрировать второй аккаунт.',
     invalidLogin: 'Неверная почта или код.',
     completeFields: 'Заполните все обязательные поля.',
-    loginCode: 'Код входа',
-    loginCodeHint: 'Введите почту и код устройства. Код показан на том устройстве, где вы регистрировались.',
+    loginCode: 'Пароль или код',
+    loginCodeHint: 'Введите почту и пароль (или код устройства, который показан при регистрации).',
     notRegistered: 'Эта почта ещё не зарегистрирована. Сначала зарегистрируйтесь.',
-    wrongCode: 'Неверный код входа.',
+    wrongCode: 'Неверный пароль или код. Проверьте и попробуйте ещё раз.',
     loginRestored: 'Аккаунт восстановлен',
     loginByCode: 'Вход по почте и коду',
     yourLoginCode: 'Ваш код входа',
@@ -1817,9 +1817,10 @@ function renderAuth() {
           </div>
           <div class="field">
             <label for="login-code">${escapeHtml(tx('loginCode'))}</label>
-            <div class="input-wrap">${icon('shield','field-icon')}<input id="login-code" autocomplete="off" required placeholder="AK······" value="${escapeHtml(state.account?.aquaCode || '')}"></div>
+            <div class="input-wrap">${icon('shield','field-icon')}<input id="login-code" type="password" autocomplete="current-password" required placeholder="••••••••" value="${escapeHtml(state.account?.aquaCode || '')}"></div>
+            <p style="margin:6px 0 0;color:var(--ink-soft);font-size:11.5px;line-height:1.4">${escapeHtml(tx('loginCodeHint'))}</p>
           </div>
-          <button class="primary-btn" type="submit">${escapeHtml(tx('login'))}</button>
+          <button class="primary-btn" type="submit" id="login-submit">${escapeHtml(tx('login'))}</button>
           <div class="auth-divider"><span>or</span></div>
           <button class="secondary-btn" id="open-registry" type="button">${escapeHtml(tx('registry'))}</button>
         </form>
@@ -1831,30 +1832,45 @@ function renderAuth() {
   document.getElementById('login-form').addEventListener('submit', async event => {
     event.preventDefault();
     const email = document.getElementById('login-email').value.trim().toLowerCase();
-    const code = document.getElementById('login-code').value.trim().toUpperCase();
-    if (!email || !code) { showToast(tx('completeFields'), '', 'info'); return; }
+    const secret = document.getElementById('login-code').value.trim();
+    const code = secret.toUpperCase();
+    const submitBtn = document.getElementById('login-submit');
+    if (!email || !secret) { showToast(tx('completeFields'), '', 'info'); return; }
 
-    // 1) Same device: a local account already exists for this email
+    const doLogin = (name, aquaCode) => {
+      sessionAuthenticated = true;
+      state.account = Object.assign(state.account || {}, { name: name || email.split('@')[0], email, aquaCode: aquaCode || state.account?.aquaCode });
+      saveState();
+      seedPublicChannels();
+      ui.tab = 'chats'; ui.selectedId = null; ui.mobileContent = false;
+      renderMain();
+    };
+
+    // 1) Same device: a local account already exists for this email.
+    //    Accept the secret as a password (hash match) or as the login-code.
     const local = state.account;
     if (local && local.email.toLowerCase() === email) {
-      if (String(local.aquaCode || '').toUpperCase() === code) {
-        sessionAuthenticated = true;
-        seedPublicChannels();
-        ui.tab = 'chats'; ui.selectedId = null; ui.mobileContent = false;
+      let okCode = String(local.aquaCode || '').toUpperCase() === code;
+      let okPass = false;
+      try { okPass = !!local.passwordHash && (await hashPassword(secret)) === local.passwordHash; } catch (e) {}
+      if (okCode || okPass) {
+        doLogin(local.name, local.aquaCode);
         showToast(tx('loginSuccess'), local.name, 'check');
-        renderMain();
-      } else {
-        showToast(tx('wrongCode'), '', 'block');
+        return;
       }
+      showToast(tx('wrongCode'), '', 'block');
       return;
     }
 
-    // 2) New device: verify email + device login-code against the cloud account
+    // 2) New device: verify email + (password or code) against the cloud account
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.style.opacity = '.6'; }
+    let secretHash = null;
+    try { secretHash = await hashPassword(secret); } catch (e) {}
     try {
-      const res = await fetch(`${location.protocol === 'file:' ? 'http://localhost:8787' : location.origin}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }) });
+      const res = await fetch(`${location.protocol === 'file:' ? 'http://localhost:8787' : location.origin}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, secret, code, secretHash }) });
       if (res.status === 200) {
         const acc = await res.json();
-        state.account = { id: makeId('user'), name: acc.name || email.split('@')[0], email: acc.email, passwordHash: null, createdAt: acc.createdAt || nowIso(), avatar: acc.avatar || null, aquaCode: acc.code };
+        state.account = { id: makeId('user'), name: acc.name || email.split('@')[0], email: acc.email, passwordHash: acc.passwordHash || null, createdAt: acc.createdAt || nowIso(), avatar: acc.avatar || null, aquaCode: acc.code };
         state.stars = 0;
         saveState();
         sessionAuthenticated = true;
@@ -1864,12 +1880,14 @@ function renderAuth() {
         renderMain();
         return;
       }
-      if (res.status === 404) { showToast(tx('notRegistered'), email, 'block'); return; }
+      if (res.status === 404) { showToast(tx('notRegistered'), email, 'block'); openRegistration(); return; }
       if (res.status === 403) { showToast(tx('wrongCode'), '', 'block'); return; }
-    } catch { /* local mode: no cloud backend */ }
-
-    // 3) No account here -> register
-    openRegistration();
+      showToast(tx('wrongCode'), '', 'block');
+    } catch (e) {
+      showToast(tx('wrongCode'), '', 'block');
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = ''; }
+    }
   });
 }
 
@@ -1924,9 +1942,10 @@ function openRegistration() {
         }
         const seed = `${email}-${Date.now()}-${Math.random()}`;
         const aquaCode = `AK${Math.abs(simpleHash(seed)).toString(36).toUpperCase().padStart(6, '0').slice(0, 6)}`;
+        const passwordHash = await hashPassword(password);
         // Claim the cloud account by email (best-effort; local registration continues if offline)
         try {
-          const check = await fetch(`${location.protocol === 'file:' ? 'http://localhost:8787' : location.origin}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code: aquaCode, name }) });
+          const check = await fetch(`${location.protocol === 'file:' ? 'http://localhost:8787' : location.origin}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code: aquaCode, name, passwordHash }) });
           if (check.status === 409) {
             showToast(tx('emailTaken'), email, 'block');
             return;
