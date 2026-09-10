@@ -105,6 +105,7 @@
           announces: asArray(t.announces),
           polls: t.polls || {},
           bots: t.bots || {},
+          roles: t.roles || {},
           adminConfig: t.adminConfig || null
         };
       }
@@ -114,6 +115,7 @@
         try { if (typeof akLive.merge === 'function') akLive.merge(snap); } catch (e) {}
         try {
           if (snap.bots && Object.keys(snap.bots).length) state.bots = snap.bots;
+          if (snap.roles) state.roles = snap.roles;
           if (snap.adminConfig) {
             state.adminConfig = Object.assign({ premiumDiscount: 0, grants: {}, seasons: [], announcements: [] }, snap.adminConfig);
           }
@@ -129,10 +131,12 @@
         try {
           self._listener = function (s) {
             var t = s.val() || {};
+            var wasOffline = !self.server;
             self.server = true;
             setStatus('В сети', 'ok');
-            applySnapshot(t);
-            try { self.presence(true); } catch (e) {}
+            if (wasOffline) { try { self.presence(true); } catch (e) {} } // mark online once, not on every value event
+            clearTimeout(self._applyTimer);
+            self._applyTimer = setTimeout(function () { applySnapshot(t); }, 250); // coalesce rapid value events into one render
           };
           self.source = ref().on('value', self._listener); // fires immediately with current data
           self.server = true;
@@ -217,6 +221,29 @@
             });
           }
 
+          // register a cloud account by email -> stores the device login-code
+          if (seg1 === 'register') {
+            var regEmail = (body.email || '').toLowerCase();
+            if (!regEmail || !body.code) return resp({ error: 'bad' }, 400);
+            return ref('accounts/' + regEmail).once('value').then(function (s) {
+              if (s.exists()) return resp({ error: 'taken' }, 409);
+              var acc = { code: body.code, email: regEmail, name: body.name || '', avatar: body.avatar || null, createdAt: nowIso() };
+              return when(ref('accounts/' + regEmail).set(acc), function () { return ok(acc); });
+            });
+          }
+
+          // login to a cloud account by email + device login-code (read-only verify)
+          if (seg1 === 'login') {
+            var logEmail = (body.email || '').toLowerCase();
+            if (!logEmail) return resp({ error: 'bad' }, 400);
+            return ref('accounts/' + logEmail).once('value').then(function (s) {
+              if (!s.exists()) return resp({ error: 'not-registered' }, 404);
+              var a = s.val() || {};
+              if (String(a.code || '').toUpperCase() !== String(body.code || '').toUpperCase()) return resp({ error: 'wrong-code' }, 403);
+              return ok({ email: logEmail, name: a.name || '', avatar: a.avatar || null, code: a.code, createdAt: a.createdAt || nowIso() });
+            });
+          }
+
           // presence heartbeat
           if (seg1 === 'presence') {
             return userNode(code, { name: body.name, avatar: body.avatar, online: !!body.online, typingTo: body.typingTo || null, updatedAt: nowIso() })
@@ -225,6 +252,24 @@
 
           // message (1-on-1 / group / channel)
           if (seg1 === 'message') {
+            if (body.action === 'delete') {
+              var delEntity = body.entityId, delId = body.id;
+              if (!delEntity || !delId) return resp({ error: 'missing' }, 400);
+              return ref('messages/' + delEntity + '/' + delId).once('value').then(function (s) {
+                var m = s.val();
+                if (!m) return ok();
+                return ref('roles/' + code).once('value').then(function (rs) {
+                  var r = rs.val();
+                  var role = (r && r.role) ? r.role : (isAdmin() ? 'admin' : null);
+                  var isSender = (m.fromCode === code);
+                  return ref('groups/' + delEntity).once('value').then(function (gs) {
+                    var canDelete = isSender || role === 'admin' || role === 'senior' || (role === 'junior' && !!gs.val());
+                    if (!canDelete) return resp({ error: 'forbidden' }, 403);
+                    return ref('messages/' + delEntity + '/' + delId).remove().then(function () { return ok(); });
+                  });
+                });
+              });
+            }
             var entityId = body.entityId;
             var key = ref('messages/' + entityId).push().key;
             var msg = { id: key, fromCode: body.fromCode || code, toCode: body.toCode, entityId: entityId, text: body.text, createdAt: body.createdAt || nowIso() };
@@ -339,6 +384,18 @@
               var poll = { id: pid, question: body.question, options: body.options, votes: {}, hours: body.hours, adminEmail: ADMIN, createdAt: nowIso() };
               return when(ref('polls/' + pid).set(poll), function () { return ok({ poll: poll }); });
             }
+            if (seg2 === 'role') {
+              var rtarget = (body.code || '').toUpperCase();
+              var rrole = body.role || null; // 'senior' | 'junior' | null (clear)
+              if (!rtarget) return resp({ error: 'missing-code' }, 400);
+              if (rrole && ['senior', 'junior'].indexOf(rrole) === -1) return resp({ error: 'bad-role' }, 400);
+              if (!rrole) return ref('roles/' + rtarget).remove().then(function () { return ok(); });
+              var rdata = { role: rrole, assignedBy: ADMIN, assignedAt: nowIso() };
+              return ref('roles/' + rtarget).set(rdata).then(function () { return ok({ role: rdata }); });
+            }
+            if (seg2 === 'roles') {
+              return ref('roles').once('value').then(function (s) { return ok({ roles: s.val() || {} }); });
+            }
             return resp({ error: 'unknown admin path' }, 404);
           }
 
@@ -346,13 +403,20 @@
           if (seg1 === 'gift') {
             var from = code, to = body.toCode, amt = Number(body.amount || 0);
             var giftType = body.giftType || 'stars', giftId = body.giftId || null;
+            var gEntity = body.entityId || ('gift:' + to);
+            var giftText = 'GIFT|' + (giftType === 'emoji' ? ('emoji|' + giftId) : giftType === 'premium' ? 'premium' : ('stars|' + amt));
+            function postGiftMsg() {
+              var gKey = ref('messages/' + gEntity).push().key;
+              var gm = { id: gKey, fromCode: from, toCode: to, entityId: gEntity, text: giftText, createdAt: nowIso(), gift: amt, giftType: giftType };
+              return ref('messages/' + gEntity + '/' + gKey).set(gm);
+            }
             if (giftType === 'emoji') {
               return ref('users/' + from + '/stars').transaction(function (cur) { if ((cur || 0) < amt) throw new Error('no'); return cur - amt; })
                 .then(function () {
                   return ref('users/' + to + '/collectibles').once('value').then(function (s) {
                     var col = s.val() || {};
                     if (!col[giftId]) col[giftId] = { id: giftId, gotAt: nowIso(), from: from, gifted: true };
-                    return ref('users/' + to + '/collectibles').set(col).then(function () { return ok({ owned: true }); });
+                    return ref('users/' + to + '/collectibles').set(col).then(function () { return postGiftMsg().then(function () { return ok({ owned: true }); }); });
                   });
                 }, function () { return resp({ error: 'not-enough-stars' }, 409); });
             }
@@ -360,7 +424,7 @@
               return ref('users/' + from + '/stars').transaction(function (cur) { if ((cur || 0) < amt) throw new Error('no'); return cur - amt; })
                 .then(function () {
                   var until = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-                  return userNode(to, { premium: true, premiumUntil: until }).then(function (u) { return saveUser(to, u).then(function () { return ok({ premium: true }); }); });
+                  return userNode(to, { premium: true, premiumUntil: until }).then(function (u) { return saveUser(to, u).then(function () { return postGiftMsg().then(function () { return ok({ premium: true }); }); }); });
                 }, function () { return resp({ error: 'not-enough-stars' }, 409); });
             }
             // default: stars transfer
@@ -370,10 +434,7 @@
                 return Promise.resolve();
               })
               .then(function () {
-                var gEntity = body.entityId || ('gift:' + to);
-                var gKey = ref('messages/' + gEntity).push().key;
-                var gm = { id: gKey, fromCode: from, toCode: to, entityId: gEntity, text: body.text || ('gift:' + amt), createdAt: nowIso(), gift: amt, giftType: 'stars' };
-                return ref('messages/' + gEntity + '/' + gKey).set(gm).then(function () { return ok(); });
+                return postGiftMsg().then(function () { return ok(); });
               });
           }
 
