@@ -1187,6 +1187,19 @@ const I18N = {
     yourLoginCode: 'Your login-code',
     loginCodeSavedHint: 'Save this code and keep it secret. You will need it to log in on any other device with your email.',
     showLoginCode: 'Show login-code',
+    genderTitle: 'Gender',
+    genderHint: 'Visible to your contacts next to your name.',
+    gender: 'Gender',
+    genderNone: 'Prefer not to say',
+    genderMale: 'Male',
+    genderFemale: 'Female',
+    genderSaved: 'Gender saved',
+    codeFoundTitle: 'Code found for this email',
+    codeFoundHint: 'Use this code to log in (paste it into the field above and press Login). You can also set a password to log in by email + password on every device.',
+    setPasswordBtn: 'Set a password',
+    adoptPasswordTitle: 'Set a password',
+    adoptPasswordHint: 'Enter a password to log in with email + password on every device. Your code stays the same.',
+    adoptPasswordLabel: 'New password',
     chats: 'Chats',
     channels: 'Channels',
     profile: 'Profile',
@@ -1211,6 +1224,7 @@ const I18N = {
     participants: 'Participants',
     addItem: 'Add',
     cancel: 'Cancel',
+    ok: 'OK',
     groupName: 'Group name',
     channelName: 'Channel name',
     noContacts: 'Create personal chats first to add participants.',
@@ -1366,6 +1380,19 @@ const I18N = {
     yourLoginCode: 'Ваш код входа',
     loginCodeSavedHint: 'Сохраните этот код и никому не показывайте. Он нужен, чтобы войти на другом устройстве по вашей почте.',
     showLoginCode: 'Показать код входа',
+    genderTitle: 'Пол',
+    genderHint: 'Виден вашим контактам рядом с именем.',
+    gender: 'Пол',
+    genderNone: 'Не указывать',
+    genderMale: 'Мужской',
+    genderFemale: 'Женский',
+    genderSaved: 'Пол сохранён',
+    codeFoundTitle: 'Код найден для этой почты',
+    codeFoundHint: 'Введите этот код в поле выше и нажмите «Войти». Или задайте пароль, чтобы входить по почте и паролю на любом устройстве.',
+    setPasswordBtn: 'Задать пароль',
+    adoptPasswordTitle: 'Задать пароль',
+    adoptPasswordHint: 'Введите пароль, чтобы входить по почте и паролю на любом устройстве. Ваш код останется тем же.',
+    adoptPasswordLabel: 'Новый пароль',
     chats: 'Чаты',
     channels: 'Каналы',
     profile: 'Профиль',
@@ -1390,6 +1417,7 @@ const I18N = {
     participants: 'Участники',
     addItem: 'Добавить',
     cancel: 'Отмена',
+    ok: 'ОК',
     groupName: 'Название группы',
     channelName: 'Название канала',
     noContacts: 'Сначала создайте личные чаты, чтобы добавлять участников.',
@@ -1704,6 +1732,39 @@ function showModal({ title, subtitle = '', body = '', actions = '', wide = false
   onReady?.(modalRoot);
 }
 
+function showModalPrompt({ title, subtitle = '', label = '', placeholder = '', type = 'text' }) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = (val) => { if (done) return; done = true; modalRoot.innerHTML = ''; globalFileInput.value = ''; filePickerCallback = null; resolve(val); };
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" data-modal-backdrop>
+        <section class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+          <header class="modal-head">
+            <div class="modal-title"><strong>${escapeHtml(title)}</strong>${subtitle ? `<span>${escapeHtml(subtitle)}</span>` : ''}</div>
+            <button class="icon-btn" type="button" data-close-modal aria-label="${escapeHtml(tx('close'))}">${icon('close')}</button>
+          </header>
+          <div class="modal-body">
+            <label class="field"><span>${escapeHtml(label)}</span><input type="${type}" class="input" id="ak-prompt-input" placeholder="${escapeHtml(placeholder)}" autocomplete="off" /></label>
+          </div>
+          <footer class="modal-actions">
+            <button class="secondary-btn" type="button" data-ak-prompt-cancel>${escapeHtml(tx('cancel'))}</button>
+            <button class="primary-btn" type="button" data-ak-prompt-ok>${escapeHtml(tx('ok'))}</button>
+          </footer>
+        </section>
+      </div>`;
+    modalRoot.querySelector('[data-close-modal]').addEventListener('click', () => finish(null));
+    modalRoot.querySelector('[data-modal-backdrop]').addEventListener('click', (e) => { if (e.target === e.currentTarget) finish(null); });
+    const input = modalRoot.querySelector('#ak-prompt-input');
+    const okBtn = modalRoot.querySelector('[data-ak-prompt-ok]');
+    const cancelBtn = modalRoot.querySelector('[data-ak-prompt-cancel]');
+    if (input) setTimeout(() => { try { input.focus(); } catch (e) {} }, 30);
+    if (cancelBtn) cancelBtn.addEventListener('click', () => finish(null));
+    const submit = () => { const v = input ? input.value.trim() : ''; finish(v); };
+    if (okBtn) okBtn.addEventListener('click', submit);
+    if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  });
+}
+
 function pickImage(callback) {
   filePickerCallback = callback;
   globalFileInput.value = '';
@@ -1881,7 +1942,56 @@ function renderAuth() {
         return;
       }
       if (res.status === 404) { showToast(tx('notRegistered'), email, 'block'); openRegistration(); return; }
-      if (res.status === 403) { showToast(tx('wrongCode'), '', 'block'); return; }
+      if (res.status === 403) {
+        const err = await res.json().catch(() => ({}));
+        if (err && err.code) {
+          // email exists -> show its code so the user can log in, and offer to adopt a password
+          const needAdopt = !!err.needAdopt;
+          const codeField = document.getElementById('login-code');
+          if (codeField) codeField.value = err.code;
+          showModal({
+            title: tx('codeFoundTitle'),
+            subtitle: tx('codeFoundHint'),
+            body: `<div class="ak-logincode-card" style="margin:4px 0 10px"><div class="ak-logincode-ic">${icon('lock')}</div><div class="ak-logincode">${escapeHtml(err.code)}</div></div>`,
+            actions: (needAdopt ? `<button class="primary-btn" type="button" data-ak-adopt>${escapeHtml(tx('setPasswordBtn'))}</button>` : '') + `<button class="secondary-btn" type="button" data-close-modal>${escapeHtml(tx('close'))}</button>`,
+            onReady(root) {
+              root.querySelectorAll('[data-close-modal]').forEach(b => b.addEventListener('click', closeModal));
+              const adoptBtn = root.querySelector('[data-ak-adopt]');
+              if (adoptBtn) adoptBtn.addEventListener('click', async () => {
+                closeModal();
+                const pwVal = await showModalPrompt({
+                  title: tx('adoptPasswordTitle'),
+                  subtitle: tx('adoptPasswordHint'),
+                  label: tx('adoptPasswordLabel'),
+                  placeholder: '••••••••',
+                  type: 'password'
+                });
+                if (!pwVal) return;
+                try {
+                  const passwordHash = await hashPassword(pwVal);
+                  const ar = await fetch(`${location.protocol === 'file:' ? 'http://localhost:8787' : location.origin}/api/adopt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, passwordHash, name: err.name || email.split('@')[0] }) });
+                  if (ar.status === 200) {
+                    const acc = await ar.json();
+                    state.account = { id: makeId('user'), name: acc.name || email.split('@')[0], email: acc.email, passwordHash: acc.passwordHash, createdAt: acc.createdAt || nowIso(), avatar: acc.avatar || null, aquaCode: acc.code };
+                    state.stars = 0;
+                    saveState();
+                    sessionAuthenticated = true;
+                    seedPublicChannels();
+                    ui.tab = 'chats'; ui.selectedId = null; ui.mobileContent = false;
+                    showToast(tx('loginRestored'), state.account.name, 'check');
+                    renderMain();
+                  } else {
+                    showToast(tx('wrongCode'), '', 'block');
+                  }
+                } catch (e) { showToast(tx('wrongCode'), '', 'block'); }
+              });
+            }
+          });
+          return;
+        }
+        showToast(tx('wrongCode'), '', 'block');
+        return;
+      }
       showToast(tx('wrongCode'), '', 'block');
     } catch (e) {
       showToast(tx('wrongCode'), '', 'block');
@@ -3807,6 +3917,7 @@ function bindMainEvents() {
   document.querySelectorAll('[data-verified-color]').forEach(button=>button.addEventListener('click',()=>{state.verified.color=button.dataset.verifiedColor;saveState();renderMain({preserveScroll:true});}));
   const messageInput=document.getElementById('message-input');messageInput?.addEventListener('input',()=>{messageInput.style.height='auto';messageInput.style.height=`${Math.min(messageInput.scrollHeight,130)}px`;});messageInput?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCurrentMessage();}});
   document.getElementById('app-theme')?.addEventListener('change',event=>{state.settings.theme=event.target.value;saveState();renderMain();});
+  document.getElementById('profile-gender')?.addEventListener('change',event=>{const g=event.target.value;state.account=state.account||{};state.account.gender=g;saveState();try{akLive.post('/api/user',{code:akLiveCode(),gender:g});}catch(e){}showToast(tx('genderSaved'),g==='none'?tx('genderNone'):(g==='male'?tx('genderMale'):tx('genderFemale')),'check');renderMain({preserveScroll:true});});
   document.getElementById('app-language')?.addEventListener('change',event=>{state.language=event.target.value;saveState();ensureAssistant();renderMain();});
   document.getElementById('font-scale')?.addEventListener('change',event=>{state.settings.fontScale=Number(event.target.value);saveState();renderMain();});
   [['compact','compact'],['animations','animations'],['sounds','sounds'],['read-receipts','readReceipts'],['autoplay','autoplay'],['online-visibility','onlineVisibility'],['ai-enabled','aiEnabled']].forEach(([id,key])=>document.getElementById(id)?.addEventListener('change',event=>{state.settings[key]=Boolean(event.target.checked);saveState();renderMain({preserveScroll:true});}));
@@ -4179,7 +4290,7 @@ function renderActivityPane(){
 function ak4SwitchRow(id,iconName,title,checked){return `<div class="setting-row"><span class="setting-icon">${icon(iconName)}</span><span class="setting-copy"><strong>${escapeHtml(title)}</strong></span><label class="switch"><input id="${id}" type="checkbox" ${checked?'checked':''}><span class="switch-track"></span></label></div>`;}
 function renderProfilePane(){
   const themes=['ocean','lagoon','rosewater','sunset','midnight','pearl','coral','forest','violet','graphite'];
-  return `<div class="section-pane profile-v4"><div class="section-head"><div><h2>${escapeHtml(tx('profileSettings'))}</h2><p>${escapeHtml(tx('profileHint'))}</p></div></div><div class="profile-dashboard"><div class="profile-column"><section class="panel-card profile-hero v4-profile-hero">${avatarMarkup({...state.account,title:state.account.name},'profile-avatar')}<div><h2>${escapeHtml(state.account.name)}${ak3VerifiedMarkup()}${state.premium?`<span class="premium-inline large">${icon('crown')}${escapeHtml(tx('premiumLabel'))}</span>`:''}</h2><p>${escapeHtml(state.account.email)}</p>${state.premium?`<div class="expiry-line">${escapeHtml(ak3PremiumUntilText())}</div>`:''}<button class="small-btn" type="button" data-action="change-self-avatar">${icon('camera')}${escapeHtml(tx('uploadAvatar'))}</button></div></section><section class="panel-card assistant-hero feature-card"><div class="price-title"><span class="setting-icon">${icon('magic')}</span><div><h3>${escapeHtml(tx('smarterAssistant'))}</h3><p>${escapeHtml(tx('assistantKnowledge'))}</p></div></div><div class="feature-buttons"><button class="primary-btn" type="button" data-action="open-assistant">${escapeHtml(tx('openAssistant'))}</button><button class="secondary-btn" type="button" data-action="assistant-tools">${escapeHtml(tx('generateReply'))}</button><button class="secondary-btn" type="button" data-action="quick-poll">${escapeHtml(tx('createPoll'))}</button></div></section><section class="panel-card"><h3>${escapeHtml(tx('appearance'))}</h3><div class="settings-list"><div class="setting-row"><span class="setting-icon">${icon('palette')}</span><span class="setting-copy"><strong>${escapeHtml(tx('theme'))}</strong><span>${escapeHtml(ak3ThemeLabel(state.settings.theme))}</span></span><select id="app-theme">${themes.map(t=>`<option value="${t}" ${state.settings.theme===t?'selected':''}>${escapeHtml(t==='lagoon'?tx('lagoon'):t==='rosewater'?tx('rosewater'):t==='sunset'?tx('sunset'):ak3ThemeLabel(t))}</option>`).join('')}</select></div><div class="setting-row"><span class="setting-icon">${icon('sliders')}</span><span class="setting-copy"><strong>${escapeHtml(tx('interfaceScale'))}</strong><span>${Math.round((state.settings.fontScale||1)*100)}%</span></span><select id="font-scale">${[.9,1,1.1,1.2].map(v=>`<option value="${v}" ${(state.settings.fontScale||1)===v?'selected':''}>${Math.round(v*100)}%</option>`).join('')}</select></div>${ak4SwitchRow('compact','compact',tx('density'),state.settings.compact)}${ak4SwitchRow('animations','sparkle',tx('animations'),state.settings.animations!==false)}${ak4SwitchRow('sounds','sound',tx('sounds'),state.settings.sounds!==false)}${ak4SwitchRow('read-receipts','checkDouble',tx('readReceipts'),state.settings.readReceipts!==false)}${ak4SwitchRow('autoplay','video',tx('autoplay'),Boolean(state.settings.autoplay))}</div></section><section class="panel-card"><h3>${escapeHtml(tx('privacy'))}</h3><div class="settings-list">${ak4SwitchRow('online-visibility','privacy',tx('onlineVisibility'),state.settings.onlineVisibility!==false)}${ak4SwitchRow('ai-enabled','magic',tx('aiSmartReplies'),state.settings.aiEnabled!==false)}<div class="setting-row"><span class="setting-icon">${icon('globe')}</span><span class="setting-copy"><strong>${escapeHtml(tx('editProfile'))}</strong></span><select id="app-language"><option value="en" ${state.language==='en'?'selected':''}>English</option><option value="ru" ${state.language==='ru'?'selected':''}>Русский</option></select></div><div class="setting-row"><span class="setting-icon">${icon('bell')}</span><span class="setting-copy"><strong>${escapeHtml(tx('notifications'))}</strong><span>${escapeHtml(tx('notificationsHint'))}</span></span><label class="switch"><input id="notifications-toggle" type="checkbox" ${state.settings.notifications?'checked':''}><span class="switch-track"></span></label></div></div></section></div><div class="profile-column"><section class="panel-card price-card premium-card-v4"><div class="price-title"><span class="setting-icon">${icon('crown')}</span><div><h3>${escapeHtml(tx('premium'))}</h3><p>${escapeHtml(tx('premiumAffordable'))}</p></div></div>${state.premium?`<div class="verify-preview">${icon('crown')}<div><strong>${escapeHtml(tx('premiumActive'))}</strong><div class="expiry-line">${escapeHtml(ak3PremiumUntilText())}</div></div></div>`:''}<button class="primary-btn full-action" type="button" data-action="buy-premium">${escapeHtml(state.premium?tx('extendPremium'):tx('buyPremium'))}</button></section><section class="panel-card price-card"><div class="price-title"><span class="setting-icon">${icon('star')}</span><div><h3>${escapeHtml(tx('stars'))}</h3><p>${escapeHtml(tx('starsAffordable'))}</p></div></div><div class="stars-balance"><span>${escapeHtml(tx('balance'))}</span><strong>${Number(state.stars||0).toLocaleString()}</strong></div><div class="feature-buttons"><button class="primary-btn" type="button" data-action="buy-stars">${escapeHtml(tx('buyStars'))}</button><button class="secondary-btn" type="button" data-action="stars-center">${escapeHtml(tx('useStars'))}</button></div></section><section class="panel-card aqua-card-panel"><div class="price-title"><span class="setting-icon">${icon('card')}</span><div><h3>${escapeHtml(tx('aquaCard'))}</h3><p>${escapeHtml(tx('aquaCardHint'))}</p></div></div><div class="aqua-card-visual"><span>AquaKotik</span><strong>${state.aquaCard.owned?'•••• 2404':'AQUA CARD'}</strong><small>${Number(state.aquaCard.balanceH||0).toLocaleString()} H</small></div>${state.aquaCard.owned?`<button class="primary-btn full-action" type="button" data-action="topup-aqua-card">${escapeHtml(tx('topUpAquaCard'))}</button>`:`<button class="primary-btn full-action" type="button" data-action="buy-aqua-card">${escapeHtml(tx('buyAquaCard'))} · 1 000 Stars</button>`}</section><section class="panel-card price-card"><div class="price-title"><span class="setting-icon">${icon('verified')}</span><div><h3>${escapeHtml(tx('verified'))}</h3><p>${escapeHtml(tx('verifiedHint'))}</p></div></div><div class="verify-preview"><strong>${escapeHtml(state.account.name)}</strong>${ak3VerifiedMarkup()||`<span class="verified-badge" style="--badge:${escapeHtml(state.verified.color)}">${icon('verified')}</span>`}</div>${state.verified.purchased?`<div class="setting-row"><span class="setting-copy"><strong>${escapeHtml(tx('verificationActive'))}</strong></span><label class="switch"><input id="verified-toggle" type="checkbox" ${state.verified.enabled?'checked':''}><span class="switch-track"></span></label></div><div class="color-swatches">${['#1598ff','#17a97b','#805ad5','#e28b20','#e05266','#17a8bc'].map(c=>`<button class="color-swatch ${state.verified.color===c?'selected':''}" style="background:${c}" type="button" data-verified-color="${c}"></button>`).join('')}</div>`:`<button class="primary-btn full-action" type="button" data-action="buy-verification">${escapeHtml(tx('buyVerification'))} · 15 000 Stars</button>`}</section><section class="panel-card"><h3>${escapeHtml(tx('transactionHistory'))}</h3><div class="transaction-list">${(state.transactions||[]).slice(0,6).map(t=>`<div><span>${escapeHtml(t.type)}</span><strong>${Number(t.price||0).toLocaleString()} ${escapeHtml(t.currency||'H')}</strong></div>`).join('')||`<p>${escapeHtml(tx('noTransactions'))}</p>`}</div></section><section class="panel-card"><button class="secondary-btn full-action" type="button" data-action="install">${icon('download')}${escapeHtml(tx('install'))}</button><button class="danger-btn full-action" type="button" data-action="logout">${escapeHtml(tx('logout'))}</button></section></div></div></div>`;
+  return `<div class="section-pane profile-v4"><div class="section-head"><div><h2>${escapeHtml(tx('profileSettings'))}</h2><p>${escapeHtml(tx('profileHint'))}</p></div></div><div class="profile-dashboard"><div class="profile-column"><section class="panel-card profile-hero v4-profile-hero">${avatarMarkup({...state.account,title:state.account.name},'profile-avatar')}<div><h2>${escapeHtml(state.account.name)}${ak3VerifiedMarkup()}${state.premium?`<span class="premium-inline large">${icon('crown')}${escapeHtml(tx('premiumLabel'))}</span>`:''}</h2><p>${escapeHtml(state.account.email)}</p>${state.premium?`<div class="expiry-line">${escapeHtml(ak3PremiumUntilText())}</div>`:''}<button class="small-btn" type="button" data-action="change-self-avatar">${icon('camera')}${escapeHtml(tx('uploadAvatar'))}</button><button class="small-btn" type="button" data-action="show-login-code">${icon('lock')}${escapeHtml(tx('showLoginCode'))}</button></div></section><section class="panel-card profile-gender-card"><div class="price-title"><span class="setting-icon">${icon('user')}</span><div><h3>${escapeHtml(tx('genderTitle'))}</h3><p>${escapeHtml(tx('genderHint'))}</p></div></div><div class="settings-list"><div class="setting-row"><span class="setting-icon">${icon('user')}</span><span class="setting-copy"><strong>${escapeHtml(tx('gender'))}</strong></span><select id="profile-gender"><option value="none" ${(state.account.gender||'none')==='none'?'selected':''}>${escapeHtml(tx('genderNone'))}</option><option value="male" ${state.account.gender==='male'?'selected':''}>♂ ${escapeHtml(tx('genderMale'))}</option><option value="female" ${state.account.gender==='female'?'selected':''}>♀ ${escapeHtml(tx('genderFemale'))}</option></select></div></div></section><section class="panel-card assistant-hero feature-card"><div class="price-title"><span class="setting-icon">${icon('magic')}</span><div><h3>${escapeHtml(tx('smarterAssistant'))}</h3><p>${escapeHtml(tx('assistantKnowledge'))}</p></div></div><div class="feature-buttons"><button class="primary-btn" type="button" data-action="open-assistant">${escapeHtml(tx('openAssistant'))}</button><button class="secondary-btn" type="button" data-action="assistant-tools">${escapeHtml(tx('generateReply'))}</button><button class="secondary-btn" type="button" data-action="quick-poll">${escapeHtml(tx('createPoll'))}</button></div></section><section class="panel-card"><h3>${escapeHtml(tx('appearance'))}</h3><div class="settings-list"><div class="setting-row"><span class="setting-icon">${icon('palette')}</span><span class="setting-copy"><strong>${escapeHtml(tx('theme'))}</strong><span>${escapeHtml(ak3ThemeLabel(state.settings.theme))}</span></span><select id="app-theme">${themes.map(t=>`<option value="${t}" ${state.settings.theme===t?'selected':''}>${escapeHtml(t==='lagoon'?tx('lagoon'):t==='rosewater'?tx('rosewater'):t==='sunset'?tx('sunset'):ak3ThemeLabel(t))}</option>`).join('')}</select></div><div class="setting-row"><span class="setting-icon">${icon('sliders')}</span><span class="setting-copy"><strong>${escapeHtml(tx('interfaceScale'))}</strong><span>${Math.round((state.settings.fontScale||1)*100)}%</span></span><select id="font-scale">${[.9,1,1.1,1.2].map(v=>`<option value="${v}" ${(state.settings.fontScale||1)===v?'selected':''}>${Math.round(v*100)}%</option>`).join('')}</select></div>${ak4SwitchRow('compact','compact',tx('density'),state.settings.compact)}${ak4SwitchRow('animations','sparkle',tx('animations'),state.settings.animations!==false)}${ak4SwitchRow('sounds','sound',tx('sounds'),state.settings.sounds!==false)}${ak4SwitchRow('read-receipts','checkDouble',tx('readReceipts'),state.settings.readReceipts!==false)}${ak4SwitchRow('autoplay','video',tx('autoplay'),Boolean(state.settings.autoplay))}</div></section><section class="panel-card"><h3>${escapeHtml(tx('privacy'))}</h3><div class="settings-list">${ak4SwitchRow('online-visibility','privacy',tx('onlineVisibility'),state.settings.onlineVisibility!==false)}${ak4SwitchRow('ai-enabled','magic',tx('aiSmartReplies'),state.settings.aiEnabled!==false)}<div class="setting-row"><span class="setting-icon">${icon('globe')}</span><span class="setting-copy"><strong>${escapeHtml(tx('editProfile'))}</strong></span><select id="app-language"><option value="en" ${state.language==='en'?'selected':''}>English</option><option value="ru" ${state.language==='ru'?'selected':''}>Русский</option></select></div><div class="setting-row"><span class="setting-icon">${icon('bell')}</span><span class="setting-copy"><strong>${escapeHtml(tx('notifications'))}</strong><span>${escapeHtml(tx('notificationsHint'))}</span></span><label class="switch"><input id="notifications-toggle" type="checkbox" ${state.settings.notifications?'checked':''}><span class="switch-track"></span></label></div></div></section></div><div class="profile-column"><section class="panel-card price-card premium-card-v4"><div class="price-title"><span class="setting-icon">${icon('crown')}</span><div><h3>${escapeHtml(tx('premium'))}</h3><p>${escapeHtml(tx('premiumAffordable'))}</p></div></div>${state.premium?`<div class="verify-preview">${icon('crown')}<div><strong>${escapeHtml(tx('premiumActive'))}</strong><div class="expiry-line">${escapeHtml(ak3PremiumUntilText())}</div></div></div>`:''}<button class="primary-btn full-action" type="button" data-action="buy-premium">${escapeHtml(state.premium?tx('extendPremium'):tx('buyPremium'))}</button></section><section class="panel-card price-card"><div class="price-title"><span class="setting-icon">${icon('star')}</span><div><h3>${escapeHtml(tx('stars'))}</h3><p>${escapeHtml(tx('starsAffordable'))}</p></div></div><div class="stars-balance"><span>${escapeHtml(tx('balance'))}</span><strong>${Number(state.stars||0).toLocaleString()}</strong></div><div class="feature-buttons"><button class="primary-btn" type="button" data-action="buy-stars">${escapeHtml(tx('buyStars'))}</button><button class="secondary-btn" type="button" data-action="stars-center">${escapeHtml(tx('useStars'))}</button></div></section><section class="panel-card aqua-card-panel"><div class="price-title"><span class="setting-icon">${icon('card')}</span><div><h3>${escapeHtml(tx('aquaCard'))}</h3><p>${escapeHtml(tx('aquaCardHint'))}</p></div></div><div class="aqua-card-visual"><span>AquaKotik</span><strong>${state.aquaCard.owned?'•••• 2404':'AQUA CARD'}</strong><small>${Number(state.aquaCard.balanceH||0).toLocaleString()} H</small></div>${state.aquaCard.owned?`<button class="primary-btn full-action" type="button" data-action="topup-aqua-card">${escapeHtml(tx('topUpAquaCard'))}</button>`:`<button class="primary-btn full-action" type="button" data-action="buy-aqua-card">${escapeHtml(tx('buyAquaCard'))} · 1 000 Stars</button>`}</section><section class="panel-card price-card"><div class="price-title"><span class="setting-icon">${icon('verified')}</span><div><h3>${escapeHtml(tx('verified'))}</h3><p>${escapeHtml(tx('verifiedHint'))}</p></div></div><div class="verify-preview"><strong>${escapeHtml(state.account.name)}</strong>${ak3VerifiedMarkup()||`<span class="verified-badge" style="--badge:${escapeHtml(state.verified.color)}">${icon('verified')}</span>`}</div>${state.verified.purchased?`<div class="setting-row"><span class="setting-copy"><strong>${escapeHtml(tx('verificationActive'))}</strong></span><label class="switch"><input id="verified-toggle" type="checkbox" ${state.verified.enabled?'checked':''}><span class="switch-track"></span></label></div><div class="color-swatches">${['#1598ff','#17a97b','#805ad5','#e28b20','#e05266','#17a8bc'].map(c=>`<button class="color-swatch ${state.verified.color===c?'selected':''}" style="background:${c}" type="button" data-verified-color="${c}"></button>`).join('')}</div>`:`<button class="primary-btn full-action" type="button" data-action="buy-verification">${escapeHtml(tx('buyVerification'))} · 15 000 Stars</button>`}</section><section class="panel-card"><h3>${escapeHtml(tx('transactionHistory'))}</h3><div class="transaction-list">${(state.transactions||[]).slice(0,6).map(t=>`<div><span>${escapeHtml(t.type)}</span><strong>${Number(t.price||0).toLocaleString()} ${escapeHtml(t.currency||'H')}</strong></div>`).join('')||`<p>${escapeHtml(tx('noTransactions'))}</p>`}</div></section><section class="panel-card"><button class="secondary-btn full-action" type="button" data-action="install">${icon('download')}${escapeHtml(tx('install'))}</button><button class="danger-btn full-action" type="button" data-action="logout">${escapeHtml(tx('logout'))}</button></section></div></div></div>`;
 }
 
 function ak4PaymentMethods(selected='ozon'){
@@ -4243,6 +4354,7 @@ handleAction = function(action){
   if(action==='activity-read')return ak4ActivityRead();
   if(action==='activity-clear')return ak4ActivityClear();
   if(action==='change-self-avatar')return ak4SelectOwnAvatar();
+  if(action==='show-login-code'){ if(state.account.aquaCode){ showModal({ title: tx('yourLoginCode'), subtitle: tx('loginCodeSavedHint'), body: `<div class="ak-logincode-card"><div class="ak-logincode-ic">${icon('lock')}</div><div class="ak-logincode">${escapeHtml(state.account.aquaCode)}</div></div>`, actions: `<button class="primary-btn" type="button" data-close-modal>${escapeHtml(tx('close'))}</button>`, onReady(root){ root.querySelectorAll('[data-close-modal]').forEach(b=>b.addEventListener('click',closeModal)); } }); } return; }
   if(action==='buy-aqua-card')return ak4BuyAquaCard();
   if(action==='topup-aqua-card')return ak4TopUpAquaCard();
   if(action==='quick-poll'){const first=state.entities.find(e=>e.type==='chat'||e.type==='group');if(first){ui.tab='chats';ui.selectedId=first.id;ui.mobileContent=true;renderMain();setTimeout(openPollCreator,40);}else showToast(tx('noContacts'),tx('assistantAppearsHint'),'info');return;}
@@ -4531,7 +4643,14 @@ const akLive={
     if(!entity)return;
     const list=getMessages(entity.id);
     if(list.some(item=>item.serverId===message.id))return;
-    addMessage(entity.id,{sender:'them',senderName:state.liveUsers?.[message.fromCode]?.name||entity.title,text:message.text,createdAt:message.createdAt,serverId:message.id});
+    // preserve letter/gift/poll/image/subject fields so they render correctly for the recipient
+    const extra={};
+    if(message.kind)extra.kind=message.kind;
+    if(message.gift)extra.gift=message.gift;
+    if(message.image)extra.image=message.image;
+    if(message.subject)extra.subject=message.subject;
+    if(message.poll)extra.poll=message.poll;
+    addMessage(entity.id,{sender:'them',senderName:state.liveUsers?.[message.fromCode]?.name||entity.title,text:message.text,createdAt:message.createdAt,serverId:message.id,...extra});
     if(ui.selectedId!==entity.id)entity.unread=(entity.unread||0)+1;
     if(!silent)showToast(tx('newMessageActivity'),entity.title,'chats');
     saveState();
@@ -6862,7 +6981,9 @@ ak43ApplyCosmetics();
     return out;
   }
   akLive.incoming=function(message,silent=false){
-    if(!message||message.fromCode===state.account?.aquaCode)return;
+    // allow the sender's own GIFT messages through (no local copy is added on send, so they'd otherwise be invisible to the sender)
+    const _isOwnGift=message&&message.fromCode===state.account?.aquaCode&&typeof message.text==='string'&&message.text.indexOf('GIFT|')===0;
+    if(!message||(_isOwnGift===false&&message.fromCode===state.account?.aquaCode))return;
     let entity=state.entities.find(e=>e.id===message.entityId);
     const byId=!!entity;
     if(!entity&&message.toCode)entity=state.entities.find(e=>e.contactCode===message.fromCode);
@@ -6893,6 +7014,11 @@ ak43ApplyCosmetics();
       serverId:message.id
     };
     Object.assign(local,ak45MediaFromServer(message.media));
+    // preserve letter/gift/poll/subject so they render correctly for the recipient
+    if(message.kind)local.kind=message.kind;
+    if(message.gift)local.gift=message.gift;
+    if(message.subject)local.subject=message.subject;
+    if(message.poll)local.poll=message.poll;
     akBaseAddMessage45(entity.id,local);
     if(ui.selectedId!==entity.id)entity.unread=(entity.unread||0)+1;
     if(!silent)showToast(t('Новое сообщение','New message'),entity.title,'chats');
@@ -7498,7 +7624,8 @@ renderMessage=function(message){
   let html=baseRenderMessage(message);
   if(message&&message.kind==='letter'){
     const head=icon('edit')+'<span>'+escapeHtml(tt47('Письмо','Letter'))+'</span>';
-    html='<div class="message-row '+(message.sender==='me'?'mine':'theirs')+'"><div class="message-bubble"><div class="ak47-letter"><div class="ak47-letter-head">'+head+'</div>'+(message.text?'<div class="ak47-letter-body">'+escapeHtml(message.text)+'</div>':'')+(message.image?'<img class="ak47-letter-img" src="'+escapeHtml(message.image)+'" alt="">':'')+(message.subject?'<div class="ak47-letter-sub">'+escapeHtml(message.subject)+'</div>':'')+'</div><div class="message-meta"><span>'+formatTime(message.createdAt)+'</span></div></div></div>';
+    const letterText=String(message.text||'').replace(/^\[letter\]/,'');
+    html='<div class="message-row '+(message.sender==='me'?'mine':'theirs')+'"><div class="message-bubble"><div class="ak47-letter"><div class="ak47-letter-head">'+head+'</div>'+(letterText?'<div class="ak47-letter-body">'+escapeHtml(letterText)+'</div>':'')+(message.image?'<img class="ak47-letter-img" src="'+escapeHtml(message.image)+'" alt="">':'')+(message.subject?'<div class="ak47-letter-sub">'+escapeHtml(message.subject)+'</div>':'')+'</div><div class="message-meta"><span>'+formatTime(message.createdAt)+'</span></div></div></div>';
     return html;
   }
   if(message&&message.text){
@@ -9069,16 +9196,8 @@ window.ak53CatCount=CAT_ICONS.length;
 
   var baseChatPane = (typeof renderChatPane === 'function') ? renderChatPane : null;
   if (baseChatPane) {
-    renderChatPane = function (entity) {
-      var html = baseChatPane(entity);
-      try {
-        if (entity && entity.type === 'assistant') {
-          var box = ak59ModelBoxHtml();
-          if (box) html = html.replace('<div class="messages"', box + '<div class="messages"');
-        }
-      } catch (e) {}
-      return html;
-    };
+    // model box removed (user found the box above messages confusing) — assistant pane stays clean
+    renderChatPane = function (entity) { return baseChatPane(entity); };
   }
 
   // click handlers for the model box
