@@ -226,21 +226,31 @@
             var regEmail = (body.email || '').toLowerCase();
             if (!regEmail || !body.code) return resp({ error: 'bad' }, 400);
             return ref('accounts/' + regEmail).once('value').then(function (s) {
-              if (s.exists()) return resp({ error: 'taken' }, 409);
-              var acc = { code: body.code, email: regEmail, name: body.name || '', avatar: body.avatar || null, createdAt: nowIso() };
+              if (s.exists()) {
+                // account already exists: adopt the cloud record if it has no password yet
+                var ex = s.val() || {};
+                if (!ex.passwordHash && body.passwordHash) {
+                  var adopted = { code: body.code, email: regEmail, name: body.name || ex.name || '', avatar: body.avatar || ex.avatar || null, createdAt: ex.createdAt || nowIso(), passwordHash: body.passwordHash };
+                  return when(ref('accounts/' + regEmail).set(adopted), function () { return ok(adopted); });
+                }
+                return resp({ error: 'taken' }, 409);
+              }
+              var acc = { code: body.code, email: regEmail, name: body.name || '', avatar: body.avatar || null, createdAt: nowIso(), passwordHash: body.passwordHash || null };
               return when(ref('accounts/' + regEmail).set(acc), function () { return ok(acc); });
             });
           }
 
-          // login to a cloud account by email + device login-code (read-only verify)
+          // login to a cloud account by email + (password or device login-code)
           if (seg1 === 'login') {
             var logEmail = (body.email || '').toLowerCase();
             if (!logEmail) return resp({ error: 'bad' }, 400);
             return ref('accounts/' + logEmail).once('value').then(function (s) {
               if (!s.exists()) return resp({ error: 'not-registered' }, 404);
               var a = s.val() || {};
-              if (String(a.code || '').toUpperCase() !== String(body.code || '').toUpperCase()) return resp({ error: 'wrong-code' }, 403);
-              return ok({ email: logEmail, name: a.name || '', avatar: a.avatar || null, code: a.code, createdAt: a.createdAt || nowIso() });
+              var okPass = !!a.passwordHash && !!body.secretHash && String(a.passwordHash) === String(body.secretHash);
+              var okCode = !!a.code && String(a.code || '').toUpperCase() === String(body.code || '').toUpperCase();
+              if (!okPass && !okCode) return resp({ error: 'wrong-creds' }, 403);
+              return ok({ email: logEmail, name: a.name || '', avatar: a.avatar || null, code: a.code, createdAt: a.createdAt || nowIso(), passwordHash: a.passwordHash || null });
             });
           }
 
